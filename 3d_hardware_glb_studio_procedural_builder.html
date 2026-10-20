@@ -12,6 +12,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 
   <style>
     * {
@@ -78,6 +80,14 @@
       height: 6px;
       border-radius: 999px;
     }
+    .i3d-indeterminate {
+      width: 35%;
+      animation: i3d-sweep 1.4s ease-in-out infinite;
+    }
+    @keyframes i3d-sweep {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(290%); }
+    }
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
@@ -113,6 +123,13 @@
 
     <!-- Action Buttons -->
     <div class="flex items-center gap-2">
+      <button id="btn-image-to-3d" class="px-3 py-1.5 rounded-lg bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-xs font-semibold text-white shadow-lg shadow-fuchsia-600/25 transition flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.6-4.6a2 2 0 012.8 0L16 16m-2-2l1.6-1.6a2 2 0 012.8 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <span>Image <span aria-hidden="true">→</span> 3D</span>
+      </button>
+
       <button id="btn-source-modal" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition flex items-center gap-1.5">
         <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
@@ -164,7 +181,7 @@
           <div class="bg-[#0f131c]/90 backdrop-blur-md border border-slate-800/90 rounded-xl px-3.5 py-2.5 shadow-xl">
             <div class="flex items-center gap-2">
               <span id="hud-model-title" class="font-bold text-sm text-white mono">Case_Fan.glb</span>
-              <span class="px-1.5 py-0.5 text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 rounded mono">CAD Beveled PBR</span>
+              <span id="hud-model-badge" class="px-1.5 py-0.5 text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 rounded mono">CAD Beveled PBR</span>
             </div>
             <p id="hud-model-desc" class="text-xs text-slate-300 mt-0.5">120mm Cooling Fan with Swept Airfoil Impeller, Corner Ribs & Keyed 2-Pin Lead</p>
             <div class="flex items-center gap-4 mt-2 pt-2 border-t border-slate-800/80 text-[11px] mono text-slate-300">
@@ -349,6 +366,119 @@
         </div>
       </div>
       <pre id="source-code-content" class="p-5 text-xs mono text-slate-300 overflow-auto flex-1 bg-[#090c12] leading-relaxed select-all"></pre>
+    </div>
+  </div>
+
+  <!-- Image → 3D Generator & GLB Import Modal -->
+  <div id="i3d-modal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="i3d-title">
+    <div class="bg-[#0f131c] border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 id="i3d-title" class="font-semibold text-sm text-white">Image → 3D Model</h3>
+          <p class="text-xs text-slate-400">Turn a photo of one object into a textured .glb with an AI 3D generator, or import an existing .glb</p>
+        </div>
+        <button id="i3d-close" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white" aria-label="Close">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="px-5 pt-3 flex gap-1.5 border-b border-slate-800" role="tablist">
+        <button data-i3d-tab="generate" role="tab" class="i3d-tab px-3 py-1.5 rounded-t-lg border border-b-0 text-xs font-medium transition">Generate from photo</button>
+        <button data-i3d-tab="import" role="tab" class="i3d-tab px-3 py-1.5 rounded-t-lg border border-b-0 text-xs font-medium transition">Import .glb file</button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-5">
+        <!-- Generate from photo -->
+        <div id="i3d-panel-generate" class="space-y-4">
+          <div id="i3d-server-note" class="hidden rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-3 text-xs text-amber-100 leading-relaxed"></div>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <label id="i3d-drop" class="relative flex flex-col items-center justify-center gap-2 min-h-[220px] rounded-xl border-2 border-dashed border-slate-700 hover:border-fuchsia-500/70 bg-slate-900/60 cursor-pointer transition text-center p-4">
+              <input id="i3d-file" type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" />
+              <img id="i3d-preview" alt="Selected photo" class="hidden max-h-[200px] max-w-full rounded-lg object-contain" />
+              <div id="i3d-drop-hint" class="text-xs text-slate-400 flex flex-col items-center gap-1.5">
+                <svg class="w-8 h-8 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M4 16l4.6-4.6a2 2 0 012.8 0L16 16m-2-2l1.6-1.6a2 2 0 012.8 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span class="font-medium text-slate-200">Drop a photo, click to browse, or paste</span>
+                <span class="text-[11px]">PNG, JPEG or WebP · up to 20 MB</span>
+              </div>
+            </label>
+            <div class="space-y-3">
+              <div>
+                <label for="i3d-name" class="text-xs text-slate-300">Model name</label>
+                <input id="i3d-name" type="text" maxlength="48" placeholder="e.g. Graphics_Card" class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-white mono focus:outline-none focus:border-fuchsia-500" />
+              </div>
+              <div>
+                <label for="i3d-provider" class="text-xs text-slate-300">AI generator</label>
+                <select id="i3d-provider" class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-white focus:outline-none focus:border-fuchsia-500"></select>
+                <p id="i3d-provider-note" class="mt-1 text-[11px] text-slate-400 leading-relaxed"></p>
+              </div>
+              <div id="i3d-opts-meshy" class="space-y-2.5">
+                <label class="flex items-center gap-2 text-xs text-slate-300">
+                  <input id="i3d-pbr" type="checkbox" checked class="accent-fuchsia-500" />
+                  PBR materials (metal, roughness &amp; normal maps)
+                </label>
+                <div>
+                  <label for="i3d-poly" class="text-xs text-slate-300">Polygon budget</label>
+                  <select id="i3d-poly" class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-white focus:outline-none focus:border-fuchsia-500">
+                    <option value="10000">10k · light, fast to load</option>
+                    <option value="30000" selected>30k · balanced</option>
+                    <option value="100000">100k · detailed</option>
+                  </select>
+                </div>
+              </div>
+              <div id="i3d-opts-stability" class="hidden">
+                <label for="i3d-texres" class="text-xs text-slate-300">Texture resolution</label>
+                <select id="i3d-texres" class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-white focus:outline-none focus:border-fuchsia-500">
+                  <option value="512">512 px</option>
+                  <option value="1024" selected>1024 px</option>
+                  <option value="2048">2048 px</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400 leading-relaxed">
+            Best results: a single object on a plain, uncluttered background, evenly lit and photographed at a three-quarter angle.
+            The photo is uploaded to the generator you choose, and that service's pricing and terms apply.
+          </p>
+          <div id="i3d-progress" class="hidden rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+            <div class="flex justify-between text-xs mb-1.5">
+              <span id="i3d-status" class="text-slate-200">Uploading photo…</span>
+              <span id="i3d-elapsed" class="mono text-slate-400">0:00</span>
+            </div>
+            <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
+              <div id="i3d-bar" class="h-full w-0 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 transition-all duration-500"></div>
+            </div>
+            <p class="mt-2 text-[11px] text-slate-500">You can close this window; the model is added to your library when it is ready.</p>
+          </div>
+          <div id="i3d-error" class="hidden rounded-xl border border-rose-500/40 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-100 leading-relaxed"></div>
+        </div>
+
+        <!-- Import an existing .glb -->
+        <div id="i3d-panel-import" class="hidden space-y-4">
+          <label id="i3d-glb-drop" class="flex flex-col items-center justify-center gap-2 min-h-[200px] rounded-xl border-2 border-dashed border-slate-700 hover:border-sky-500/70 bg-slate-900/60 cursor-pointer transition text-center p-4">
+            <input id="i3d-glb-file" type="file" accept=".glb,model/gltf-binary" class="sr-only" />
+            <svg class="w-8 h-8 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+            <span class="text-xs font-medium text-slate-200">Drop a .glb file here or click to browse</span>
+            <span class="text-[11px] text-slate-400">Self-contained binary glTF, e.g. downloaded from an AI generator's website or a model library</span>
+          </label>
+          <p class="text-[11px] text-slate-400 leading-relaxed">Imported models join your library in this browser and can be inspected, edited in the PBR editor and re-exported like the built-in hardware. No server is needed for importing.</p>
+          <div id="i3d-import-error" class="hidden rounded-xl border border-rose-500/40 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-100"></div>
+        </div>
+      </div>
+
+      <div class="px-5 py-3 border-t border-slate-800 flex items-center justify-between gap-2">
+        <span class="text-[11px] text-slate-500">Models are saved in this browser's library</span>
+        <div class="flex gap-2">
+          <button id="i3d-cancel-job" class="hidden px-3 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-xs font-medium text-rose-100">Cancel generation</button>
+          <button id="i3d-dismiss" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200">Close</button>
+          <button id="i3d-generate" disabled class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-xs font-semibold text-white shadow-lg shadow-fuchsia-600/20 transition disabled:opacity-40 disabled:cursor-not-allowed">Generate 3D model</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -4253,10 +4383,11 @@
         });
       });
 
-      // Default to first callout note
-      if (asset.callouts[0]) {
-        document.getElementById('lesson-part-tag').textContent = `#1 ${asset.callouts[0].tag}`;
-        document.getElementById('lesson-part-desc').textContent = asset.callouts[0].desc;
+      // Default to the first callout note, or the provenance note of a library model
+      const note = asset.callouts[0] ? { tag: `#1 ${asset.callouts[0].tag}`, desc: asset.callouts[0].desc } : asset.lesson;
+      if (note) {
+        document.getElementById('lesson-part-tag').textContent = note.tag;
+        document.getElementById('lesson-part-desc').textContent = note.desc;
       }
     }
 
@@ -4320,6 +4451,11 @@
 
       applyWireframeState(currentModelGroup, wireframeEnabled);
       updateHUDAndHierarchy(item.filename, item.subtitle);
+      document.getElementById('hud-model-badge').textContent = !item.library
+        ? 'CAD Beveled PBR'
+        : item.record.source === 'generated'
+          ? 'AI Image → 3D'
+          : 'Imported GLB';
       buildCalloutPins(item);
       renderAssetSidebar();
 
@@ -4337,7 +4473,7 @@
       currentModelGroup = new THREE.Group();
       currentModelGroup.name = 'All_9_Hardware_Models_Kit';
 
-      HARDWARE_REGISTRY.forEach((item, idx) => {
+      HARDWARE_REGISTRY.filter((item) => !item.library).forEach((item, idx) => {
         const col = (idx % 3) - 1;
         const row = Math.floor(idx / 3) - 1;
         const model = item.builder();
@@ -4355,6 +4491,7 @@
 
       applyWireframeState(currentModelGroup, wireframeEnabled);
       updateHUDAndHierarchy('All_9_Hardware_Kit.glb', 'Complete 9-Piece Classroom Training 3D Hardware Collection');
+      document.getElementById('hud-model-badge').textContent = 'CAD Beveled PBR';
       buildCalloutPins(null);
       renderAssetSidebar();
     }
@@ -4393,7 +4530,7 @@
         row.innerHTML = `
           <div class="flex items-center gap-2 truncate">
             <span class="w-2 h-2 rounded-full bg-sky-400 shrink-0"></span>
-            <span class="mono text-slate-200 truncate font-medium">${subGroup.name || 'SubMesh_' + idx}</span>
+            <span class="mono text-slate-200 truncate font-medium">${escapeHTML(subGroup.name || 'SubMesh_' + idx)}</span>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <span class="text-[10px] mono text-slate-500">${subTris} tris</span>
@@ -4564,8 +4701,9 @@
 
     async function batchExportAll9GLBs() {
       showToast('Batch exporting all 9 .glb models (1/9)...', 12000);
-      for (let i = 0; i < HARDWARE_REGISTRY.length; i++) {
-        const item = HARDWARE_REGISTRY[i];
+      const kit = HARDWARE_REGISTRY.filter((item) => !item.library);
+      for (let i = 0; i < kit.length; i++) {
+        const item = kit[i];
         showToast(`Exporting (${i + 1}/9): ${item.filename}...`, 4000);
         const tempModel = item.builder();
         await exportObjectToGLB(tempModel, item.filename, true);
@@ -4583,6 +4721,11 @@
 
       HARDWARE_REGISTRY.forEach((item, idx) => {
         const isActive = !isGridView && idx === activeAssetIndex;
+        if (item.library) {
+          if (!HARDWARE_REGISTRY[idx - 1].library) listEl.appendChild(libraryHeading());
+          listEl.appendChild(libraryCard(item, idx, isActive));
+          return;
+        }
         const btn = document.createElement('button');
         btn.className = `w-56 lg:w-full text-left px-3 py-2.5 rounded-xl border transition shrink-0 flex items-center justify-between ${
           isActive
@@ -4615,6 +4758,58 @@
 
         listEl.appendChild(btn);
       });
+
+      const addCard = document.createElement('button');
+      addCard.className = 'w-56 lg:w-full shrink-0 px-3 py-2.5 rounded-xl border border-dashed border-fuchsia-500/40 hover:border-fuchsia-400 hover:bg-fuchsia-500/10 text-left text-xs text-fuchsia-200 transition';
+      addCard.innerHTML = '<div class="font-semibold">+ New model from a photo</div><div class="text-[11px] text-slate-400 mt-0.5">AI image-to-3D, or import a .glb</div>';
+      addCard.addEventListener('click', () => ImageTo3D.open());
+      listEl.appendChild(addCard);
+    }
+
+    function libraryHeading() {
+      const heading = document.createElement('div');
+      heading.className = 'shrink-0 self-center lg:self-auto px-1 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-fuchsia-300/80';
+      heading.textContent = 'My Library';
+      return heading;
+    }
+
+    function libraryCard(item, idx, isActive) {
+      const card = document.createElement('button');
+      card.className = `w-56 lg:w-full text-left px-2.5 py-2 rounded-xl border transition shrink-0 flex items-center gap-2.5 ${
+        isActive
+          ? 'bg-fuchsia-500/15 border-fuchsia-500/50 text-white shadow-md shadow-fuchsia-950/40'
+          : 'bg-slate-900/60 hover:bg-slate-800/80 border-slate-800/80 text-slate-300'
+      }`;
+      const thumb = item.record.thumb
+        ? `<img src="${escapeHTML(item.record.thumb)}" alt="" class="w-11 h-11 rounded-lg object-cover shrink-0 border border-slate-700" />`
+        : '<span class="w-11 h-11 rounded-lg shrink-0 border border-slate-700 bg-slate-800 flex items-center justify-center text-[10px] mono text-slate-400">GLB</span>';
+      card.innerHTML = `
+        ${thumb}
+        <div class="truncate flex-1">
+          <div class="text-xs font-semibold truncate">${escapeHTML(item.title)}</div>
+          <div class="text-[11px] text-slate-400 truncate mt-0.5">${escapeHTML(item.subtitle)}</div>
+          <div class="text-[10px] mono text-fuchsia-300 truncate mt-1">${escapeHTML(item.filename)}</div>
+        </div>
+        <div class="flex flex-col gap-1 shrink-0">
+          <span class="px-2 py-0.5 rounded bg-slate-800 hover:bg-sky-600 text-[10px] mono font-semibold text-slate-200 hover:text-white" data-quick-dl="${idx}" title="Download ${escapeHTML(item.filename)}">.GLB</span>
+          <span class="px-2 py-0.5 rounded bg-slate-800 hover:bg-rose-600 text-[10px] mono font-semibold text-slate-400 hover:text-white text-center" data-remove="${idx}" title="Remove from library">✕</span>
+        </div>
+      `;
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('[data-remove]')) {
+          e.stopPropagation();
+          removeLibraryAsset(idx);
+          return;
+        }
+        if (e.target.closest('[data-quick-dl]')) {
+          e.stopPropagation();
+          showToast(`Exporting binary ${item.filename}...`);
+          exportObjectToGLB(item.builder(), item.filename, true);
+          return;
+        }
+        loadSingleAsset(idx);
+      });
+      return card;
     }
 
     function bindUIEvents() {
@@ -4629,13 +4824,16 @@
       // Export Current Editable GLTF (JSON)
       document.getElementById('btn-export-gltf-json').addEventListener('click', () => {
         if (!currentModelGroup) return;
-        const base = isGridView ? 'All_9_Hardware_Kit' : HARDWARE_REGISTRY[activeAssetIndex].id;
+        const base = isGridView ? 'All_9_Hardware_Kit' : HARDWARE_REGISTRY[activeAssetIndex].filename.replace(/\.glb$/, '');
         showToast(`Exporting editable JSON ${base}.gltf...`);
         exportObjectToGLB(currentModelGroup, `${base}.gltf`, false);
       });
 
       // Batch Export All 9 GLBs
       document.getElementById('btn-export-all-glb').addEventListener('click', batchExportAll9GLBs);
+
+      // Image → 3D generator and .glb import
+      ImageTo3D.bind();
 
       // 9-Up Grid View
       document.getElementById('btn-view-all-grid').addEventListener('click', loadAllAssetsGrid);
@@ -4775,7 +4973,10 @@
           `// ==========================================================================\n` +
           `// 2. EDITABLE PROCEDURAL GENERATOR FUNCTION FOR: ${currentAsset.title}\n` +
           `// ==========================================================================\n` +
-          currentAsset.builder.toString();
+          (currentAsset.library
+            ? `// "${currentAsset.title}" is a ${currentAsset.record.source === 'generated' ? 'mesh generated by AI from a photo' : 'mesh imported from a .glb file'},\n` +
+              `// so it has no procedural generator code. Export it and load it as shown above.\n`
+            : currentAsset.builder.toString());
         document.getElementById('source-modal').classList.remove('hidden');
       });
 
@@ -4794,6 +4995,569 @@
         showToast('Editable Three.js source copied to clipboard!');
       });
     }
+
+    // ============================================================================
+    // 9B. IMAGE → 3D GENERATION, GLB IMPORT & PERSONAL MODEL LIBRARY
+    // ============================================================================
+    // Photos go to an AI image-to-3D provider through studio-server.mjs, which holds the API key and
+    // relays the finished .glb. Generated or imported models are normalised into studio assets and kept
+    // in this browser's IndexedDB so they survive reloads.
+    function escapeHTML(text) {
+      return String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    }
+
+    // Model names double as file names and node names: keep them to safe ASCII
+    function toModelName(text, fallback = 'Generated_Model') {
+      const name = String(text || '')
+        .replace(/\.[a-z0-9]{2,4}$/i, '')
+        .replace(/[^A-Za-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 48);
+      return name || fallback;
+    }
+
+    const ModelLibrary = {
+      dbPromise: null,
+
+      open() {
+        if (!this.dbPromise) {
+          this.dbPromise = new Promise((resolve, reject) => {
+            const req = indexedDB.open('glb-studio-library', 1);
+            req.onupgradeneeded = () => req.result.createObjectStore('models', { keyPath: 'id' });
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+          });
+        }
+        return this.dbPromise;
+      },
+
+      async run(mode, operation) {
+        const db = await this.open();
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction('models', mode);
+          const request = operation(tx.objectStore('models'));
+          tx.oncomplete = () => resolve(request.result);
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        });
+      },
+
+      all() {
+        return this.run('readonly', (store) => store.getAll());
+      },
+
+      put(record) {
+        return this.run('readwrite', (store) => store.put(record));
+      },
+
+      remove(id) {
+        return this.run('readwrite', (store) => store.delete(id));
+      }
+    };
+
+    function parseGLB(arrayBuffer) {
+      return new Promise((resolve, reject) => {
+        const loader = new THREE.GLTFLoader();
+        if (THREE.DRACOLoader) {
+          const draco = new THREE.DRACOLoader();
+          draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+          loader.setDRACOLoader(draco);
+        }
+        loader.parse(arrayBuffer, '', (gltf) => resolve(gltf.scene), (err) => reject(new Error((err && err.message) || 'Not a valid glTF file')));
+      });
+    }
+
+    // Centre the model, scale its largest dimension to the studio's ~1.6-unit working size, name its parts
+    // and give multi-part models an exploded view, so it behaves like the built-in hardware
+    function buildStudioTemplate(gltfScene, record) {
+      gltfScene.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(gltfScene);
+      if (box.isEmpty()) throw new Error('The model contains no visible geometry');
+      const size = box.getSize(new THREE.Vector3());
+      const centre = box.getCenter(new THREE.Vector3());
+      const scale = 1.6 / Math.max(size.x, size.y, size.z, 1e-6);
+
+      const parts = gltfScene.children.filter((child) => {
+        let hasMesh = false;
+        child.traverse((node) => {
+          if (node.isMesh) hasMesh = true;
+        });
+        return hasMesh;
+      });
+      if (parts.length > 1) {
+        parts.forEach((part) => {
+          const dir = new THREE.Box3().setFromObject(part).getCenter(new THREE.Vector3()).sub(centre);
+          if (dir.lengthSq() < 1e-10) return;
+          dir.normalize().multiplyScalar(0.35 / scale);
+          setExplodeOffset(part, dir.x, dir.y, dir.z);
+        });
+      }
+
+      let meshCount = 0;
+      gltfScene.traverse((node) => {
+        if (node.isMesh && !node.name) node.name = `${record.fileBase}_Part_${++meshCount}`;
+      });
+      gltfScene.name = gltfScene.name || `${record.fileBase}_Scene`;
+
+      const fit = new THREE.Group();
+      fit.name = `${record.fileBase}_Model`;
+      fit.scale.setScalar(scale);
+      fit.position.copy(centre).multiplyScalar(-scale);
+      fit.add(gltfScene);
+      const root = new THREE.Group();
+      root.name = record.fileBase;
+      root.add(fit);
+      return root;
+    }
+
+    function registerLibraryAsset(record, template) {
+      const date = new Date(record.createdAt).toLocaleDateString();
+      const generated = record.source === 'generated';
+      const asset = {
+        id: record.id,
+        library: true,
+        record,
+        filename: `${record.fileBase}.glb`,
+        title: record.name,
+        subtitle: generated ? `AI image-to-3D · ${record.providerName}` : 'Imported .glb model',
+        builder: () => template.clone(),
+        camPos: [1.55, 1.0, 1.95],
+        callouts: [],
+        lesson: generated
+          ? {
+              tag: 'AI-generated model',
+              desc: `Generated on ${date} by ${record.providerName} from “${record.sourceName}”. Shape and textures are the AI's reconstruction of the photo, so check proportions against the real part before teaching with it. Adjust materials in the PBR editor, then export.`
+            }
+          : {
+              tag: 'Imported model',
+              desc: `Imported on ${date} from “${record.sourceName}”. Inspect it, adjust materials in the PBR editor and re-export it as .glb.`
+            }
+      };
+      HARDWARE_REGISTRY.push(asset);
+      return asset;
+    }
+
+    // Square snapshot of the current viewport (used as the library thumbnail for imported models)
+    function captureViewportThumbnail() {
+      renderer.render(scene, camera);
+      const src = renderer.domElement;
+      const thumb = document.createElement('canvas');
+      thumb.width = 160;
+      thumb.height = 160;
+      const ctx = thumb.getContext('2d');
+      ctx.fillStyle = '#151b27';
+      ctx.fillRect(0, 0, 160, 160);
+      const side = Math.min(src.width, src.height);
+      ctx.drawImage(src, (src.width - side) / 2, (src.height - side) / 2, side, side, 0, 0, 160, 160);
+      return thumb.toDataURL('image/jpeg', 0.85);
+    }
+
+    async function addModelToLibrary({ glb, name, source, providerName = null, sourceName, thumb = null }) {
+      const record = {
+        id: `lib_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        fileBase: name,
+        source,
+        providerName,
+        sourceName,
+        createdAt: Date.now(),
+        glb,
+        thumb
+      };
+      const template = buildStudioTemplate(await parseGLB(glb.slice(0)), record);
+      const asset = registerLibraryAsset(record, template);
+      loadSingleAsset(HARDWARE_REGISTRY.indexOf(asset));
+      if (!record.thumb) record.thumb = captureViewportThumbnail();
+      try {
+        await ModelLibrary.put(record);
+      } catch (err) {
+        console.warn('Could not save to the model library:', err);
+        showToast('Loaded, but this browser blocked saving it to the library (private window?)', 5000);
+      }
+      renderAssetSidebar();
+      return asset;
+    }
+
+    function removeLibraryAsset(index) {
+      const asset = HARDWARE_REGISTRY[index];
+      if (!asset || !asset.library) return;
+      if (!window.confirm(`Remove "${asset.title}" from your library? This cannot be undone.`)) return;
+      ModelLibrary.remove(asset.id).catch((err) => console.warn('Could not delete from the model library:', err));
+      HARDWARE_REGISTRY.splice(index, 1);
+      if (!isGridView && activeAssetIndex === index) {
+        loadSingleAsset(0);
+        return;
+      }
+      if (activeAssetIndex > index) activeAssetIndex--;
+      renderAssetSidebar();
+    }
+
+    async function restoreModelLibrary() {
+      let records = [];
+      try {
+        records = await ModelLibrary.all();
+      } catch (err) {
+        console.warn('Model library unavailable in this browser:', err);
+        return;
+      }
+      records.sort((a, b) => a.createdAt - b.createdAt);
+      for (const record of records) {
+        try {
+          registerLibraryAsset(record, buildStudioTemplate(await parseGLB(record.glb.slice(0)), record));
+        } catch (err) {
+          console.warn(`Skipping unreadable library model "${record.name}":`, err);
+        }
+      }
+      if (records.length) renderAssetSidebar();
+    }
+
+    const ImageTo3D = {
+      providers: [],
+      serverReady: false,
+      image: null,
+      job: null,
+      elapsedTimer: null,
+      nameEdited: false,
+
+      el(id) {
+        return document.getElementById(id);
+      },
+
+      open(tab = 'generate') {
+        this.el('i3d-modal').classList.remove('hidden');
+        this.showTab(tab);
+        this.refreshProviders();
+      },
+
+      close() {
+        this.el('i3d-modal').classList.add('hidden');
+      },
+
+      isOpen() {
+        return !this.el('i3d-modal').classList.contains('hidden');
+      },
+
+      showTab(tab) {
+        this.tab = tab;
+        document.querySelectorAll('[data-i3d-tab]').forEach((btn) => {
+          const active = btn.dataset.i3dTab === tab;
+          btn.setAttribute('aria-selected', String(active));
+          btn.className = `i3d-tab px-3 py-1.5 rounded-t-lg border border-b-0 text-xs font-medium transition ${
+            active ? 'bg-slate-900 border-slate-700 text-white' : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200'
+          }`;
+        });
+        this.el('i3d-panel-generate').classList.toggle('hidden', tab !== 'generate');
+        this.el('i3d-panel-import').classList.toggle('hidden', tab !== 'import');
+        this.el('i3d-generate').classList.toggle('hidden', tab !== 'generate');
+      },
+
+      setNote(html) {
+        const note = this.el('i3d-server-note');
+        note.innerHTML = html || '';
+        note.classList.toggle('hidden', !html);
+      },
+
+      async refreshProviders() {
+        const serverHelp =
+          'Generating from photos runs through the studio\'s small local server, which keeps your AI API key private. ' +
+          'In the project folder run <code class="mono text-white">node studio-server.mjs</code>, then open ' +
+          '<code class="mono text-white">http://localhost:8787</code>. Importing .glb files works without it.';
+        if (location.protocol === 'file:') {
+          this.serverReady = false;
+          this.providers = [];
+          this.setNote(serverHelp);
+        } else {
+          try {
+            const res = await fetch('api/providers', { cache: 'no-store' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            this.providers = (await res.json()).providers || [];
+            this.serverReady = true;
+            this.setNote(
+              this.providers.some((p) => p.configured)
+                ? ''
+                : 'No AI generator is configured yet. Add a key to the <code class="mono text-white">.env</code> file next to ' +
+                    '<code class="mono text-white">studio-server.mjs</code> and restart it, e.g. ' +
+                    '<code class="mono text-white">MESHY_API_KEY=…</code> or <code class="mono text-white">STABILITY_API_KEY=…</code>. ' +
+                    'Meshy\'s free test key <code class="mono text-white">msy_dummy_api_key_for_test_mode_12345678</code> returns a sample model so you can try the workflow.'
+            );
+          } catch (err) {
+            this.serverReady = false;
+            this.providers = [];
+            this.setNote(serverHelp);
+          }
+        }
+
+        const select = this.el('i3d-provider');
+        const previous = select.value;
+        select.innerHTML = '';
+        if (!this.providers.length) select.add(new Option('Studio server not running', ''));
+        this.providers.forEach((p) => {
+          const label = `${p.name}${p.testMode ? ' (test mode)' : ''}${p.configured ? '' : ' (add API key)'}`;
+          const option = new Option(label, p.id);
+          option.disabled = !p.configured;
+          select.add(option);
+        });
+        const firstReady = this.providers.find((p) => p.configured);
+        if (previous && this.providers.some((p) => p.id === previous && p.configured)) select.value = previous;
+        else if (firstReady) select.value = firstReady.id;
+        this.updateProviderUI();
+      },
+
+      updateProviderUI() {
+        const provider = this.providers.find((p) => p.id === this.el('i3d-provider').value);
+        this.el('i3d-opts-meshy').classList.toggle('hidden', !provider || provider.id !== 'meshy');
+        this.el('i3d-opts-stability').classList.toggle('hidden', !provider || provider.id !== 'stability');
+        this.el('i3d-provider-note').textContent = provider
+          ? `${provider.detail}.${provider.testMode ? ' Test mode returns Meshy\'s sample model and uses no credits.' : ''}`
+          : '';
+        this.updateGenerateButton();
+      },
+
+      updateGenerateButton() {
+        const provider = this.providers.find((p) => p.id === this.el('i3d-provider').value);
+        this.el('i3d-generate').disabled = !(this.serverReady && provider && provider.configured && this.image && !this.job);
+      },
+
+      showError(message, target = 'i3d-error') {
+        const box = this.el(target);
+        box.textContent = message || '';
+        box.classList.toggle('hidden', !message);
+      },
+
+      // Downscale to at most 1024 px: plenty for the generators and keeps uploads quick. PNG/WebP stay PNG
+      // so cut-out photos keep their transparent background.
+      async setImageFile(file) {
+        this.showError('');
+        if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) {
+          this.showError('Choose a PNG, JPEG or WebP photo.');
+          return;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+          this.showError('That photo is larger than 20 MB.');
+          return;
+        }
+        let img;
+        const url = URL.createObjectURL(file);
+        try {
+          img = await new Promise((resolve, reject) => {
+            const el = new Image();
+            el.onload = () => resolve(el);
+            el.onerror = () => reject(new Error('unreadable'));
+            el.src = url;
+          });
+        } catch (err) {
+          this.showError('This image could not be read.');
+          return;
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+
+        const scale = Math.min(1, 1024 / Math.max(img.naturalWidth, img.naturalHeight));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = file.type === 'image/jpeg' ? canvas.toDataURL('image/jpeg', 0.92) : canvas.toDataURL('image/png');
+
+        const thumb = document.createElement('canvas');
+        thumb.width = 160;
+        thumb.height = 160;
+        const tctx = thumb.getContext('2d');
+        tctx.fillStyle = '#151b27';
+        tctx.fillRect(0, 0, 160, 160);
+        const fitScale = Math.min(160 / canvas.width, 160 / canvas.height);
+        const tw = canvas.width * fitScale;
+        const th = canvas.height * fitScale;
+        tctx.drawImage(canvas, (160 - tw) / 2, (160 - th) / 2, tw, th);
+
+        this.image = { dataUrl, thumb: thumb.toDataURL('image/jpeg', 0.85), fileName: file.name || 'pasted image' };
+        this.el('i3d-preview').src = dataUrl;
+        this.el('i3d-preview').classList.remove('hidden');
+        this.el('i3d-drop-hint').classList.add('hidden');
+        if (!this.nameEdited) this.el('i3d-name').value = toModelName(file.name);
+        this.updateGenerateButton();
+      },
+
+      setRunning(running) {
+        this.el('i3d-progress').classList.toggle('hidden', !running);
+        this.el('i3d-cancel-job').classList.toggle('hidden', !running);
+        clearInterval(this.elapsedTimer);
+        if (running) {
+          const started = Date.now();
+          const tick = () => {
+            const s = Math.floor((Date.now() - started) / 1000);
+            this.el('i3d-elapsed').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+          };
+          tick();
+          this.elapsedTimer = setInterval(tick, 1000);
+        }
+        this.updateGenerateButton();
+      },
+
+      updateProgress(message, progress) {
+        this.el('i3d-status').textContent = message || 'Working…';
+        const bar = this.el('i3d-bar');
+        const pct = Number(progress) || 0;
+        // Providers without progress reporting get an indeterminate sweep
+        bar.classList.toggle('i3d-indeterminate', pct <= 0);
+        bar.style.width = pct > 0 ? `${Math.max(4, Math.min(100, pct))}%` : '';
+      },
+
+      async generate() {
+        if (!this.image || this.job) return;
+        const provider = this.el('i3d-provider').value;
+        const name = toModelName(this.el('i3d-name').value, toModelName(this.image.fileName));
+        const options =
+          provider === 'meshy'
+            ? { pbr: this.el('i3d-pbr').checked, polycount: Number(this.el('i3d-poly').value) }
+            : { textureResolution: Number(this.el('i3d-texres').value) };
+        this.showError('');
+        this.job = { id: null, provider, name, image: this.image, cancelled: false };
+        this.setRunning(true);
+        this.updateProgress('Uploading photo…', 0);
+        try {
+          const res = await fetch('api/image-to-3d', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Studio-Client': '1' },
+            body: JSON.stringify({ provider, image: this.image.dataUrl, options })
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.error || `The studio server returned ${res.status}`);
+          this.job.id = body.jobId;
+          this.pollJob(this.job);
+        } catch (err) {
+          this.finishJob(this.job, err.message === 'Failed to fetch' ? 'Could not reach the studio server. Is studio-server.mjs still running?' : err.message);
+        }
+      },
+
+      async pollJob(job) {
+        while (!job.cancelled) {
+          await new Promise((r) => setTimeout(r, 2000));
+          if (job.cancelled) return;
+          let state;
+          try {
+            const res = await fetch(`api/image-to-3d/${job.id}`, { cache: 'no-store' });
+            state = await res.json();
+            if (!res.ok) throw new Error(state.error || `HTTP ${res.status}`);
+          } catch (err) {
+            this.finishJob(job, `Lost contact with the studio server (${err.message}).`);
+            return;
+          }
+          if (job.cancelled) return;
+          if (state.status === 'failed') {
+            this.finishJob(job, state.error || 'Generation failed.');
+            return;
+          }
+          if (state.status === 'succeeded') {
+            this.updateProgress('Loading model into the studio…', 100);
+            try {
+              const res = await fetch(`api/image-to-3d/${job.id}/model.glb`, { cache: 'no-store' });
+              if (!res.ok) throw new Error(`download failed (HTTP ${res.status})`);
+              const glb = await res.arrayBuffer();
+              const providerName = (this.providers.find((p) => p.id === job.provider) || {}).name || job.provider;
+              await addModelToLibrary({ glb, name: job.name, source: 'generated', providerName, sourceName: job.image.fileName, thumb: job.image.thumb });
+              this.finishJob(job, null);
+              showToast(`${job.name}.glb generated and added to your library`, 4000);
+            } catch (err) {
+              this.finishJob(job, `The model was generated but could not be loaded: ${err.message}`);
+            }
+            return;
+          }
+          this.updateProgress(state.message, state.progress);
+        }
+      },
+
+      finishJob(job, error) {
+        if (this.job !== job) return;
+        this.job = null;
+        this.setRunning(false);
+        if (error) {
+          this.showError(error);
+          if (!this.isOpen()) showToast(`Image → 3D failed: ${error}`, 6000);
+        } else if (this.isOpen()) {
+          this.close();
+        }
+      },
+
+      cancel() {
+        const job = this.job;
+        if (!job) return;
+        job.cancelled = true;
+        if (job.id) fetch(`api/image-to-3d/${job.id}`, { method: 'DELETE', headers: { 'X-Studio-Client': '1' } }).catch(() => {});
+        this.finishJob(job, null);
+        this.showError('Generation cancelled.');
+      },
+
+      async importFile(file) {
+        this.showError('', 'i3d-import-error');
+        if (!file) return;
+        if (!/\.glb$/i.test(file.name) && file.type !== 'model/gltf-binary') {
+          this.showError('Choose a .glb (binary glTF) file.', 'i3d-import-error');
+          return;
+        }
+        if (file.size > 250 * 1024 * 1024) {
+          this.showError('That file is larger than 250 MB.', 'i3d-import-error');
+          return;
+        }
+        const glb = await file.arrayBuffer();
+        if (glb.byteLength < 12 || new TextDecoder().decode(new Uint8Array(glb, 0, 4)) !== 'glTF') {
+          this.showError('This file is not a binary glTF (.glb).', 'i3d-import-error');
+          return;
+        }
+        try {
+          const name = toModelName(file.name, 'Imported_Model');
+          await addModelToLibrary({ glb, name, source: 'imported', sourceName: file.name });
+          this.close();
+          showToast(`${name}.glb imported into your library`, 3500);
+        } catch (err) {
+          this.showError(`Could not load this .glb: ${err.message}`, 'i3d-import-error');
+        }
+      },
+
+      bind() {
+        this.el('btn-image-to-3d').addEventListener('click', () => this.open());
+        this.el('i3d-close').addEventListener('click', () => this.close());
+        this.el('i3d-dismiss').addEventListener('click', () => this.close());
+        this.el('i3d-generate').addEventListener('click', () => this.generate());
+        this.el('i3d-cancel-job').addEventListener('click', () => this.cancel());
+        this.el('i3d-provider').addEventListener('change', () => this.updateProviderUI());
+        this.el('i3d-name').addEventListener('input', () => {
+          this.nameEdited = this.el('i3d-name').value.trim() !== '';
+        });
+        document.querySelectorAll('[data-i3d-tab]').forEach((btn) => btn.addEventListener('click', () => this.showTab(btn.dataset.i3dTab)));
+        this.el('i3d-file').addEventListener('change', (e) => this.setImageFile(e.target.files[0]));
+        this.el('i3d-glb-file').addEventListener('change', (e) => {
+          this.importFile(e.target.files[0]);
+          e.target.value = '';
+        });
+
+        [['i3d-drop', (f) => this.setImageFile(f)], ['i3d-glb-drop', (f) => this.importFile(f)]].forEach(([id, handle]) => {
+          const zone = this.el(id);
+          zone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            zone.classList.add('border-fuchsia-400');
+          });
+          zone.addEventListener('dragleave', () => zone.classList.remove('border-fuchsia-400'));
+          zone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            zone.classList.remove('border-fuchsia-400');
+            if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]);
+          });
+        });
+
+        document.addEventListener('paste', (e) => {
+          if (!this.isOpen() || this.tab !== 'generate' || !e.clipboardData) return;
+          const item = Array.from(e.clipboardData.items).find((i) => /^image\//.test(i.type));
+          if (item) this.setImageFile(item.getAsFile());
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && this.isOpen()) this.close();
+        });
+        this.el('i3d-modal').addEventListener('click', (e) => {
+          if (e.target === this.el('i3d-modal')) this.close();
+        });
+      }
+    };
 
     // ============================================================================
     // 10. ANIMATION LOOP & WINDOW.ONLOAD STARTUP
@@ -4831,6 +5595,7 @@
       bindUIEvents();
       loadSingleAsset(0);
       animate();
+      restoreModelLibrary();
     };
   </script>
 </body>

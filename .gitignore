@@ -1,0 +1,3 @@
+# Local API keys for the image-to-3D server
+.env
+node_modules/
