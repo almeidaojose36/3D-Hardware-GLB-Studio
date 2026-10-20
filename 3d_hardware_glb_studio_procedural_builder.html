@@ -107,7 +107,7 @@
           <h1 class="font-semibold text-sm md:text-base tracking-tight text-white">Classroom 3D PC Hardware CAD & GLB Studio</h1>
           <span class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-full mono">High-Detail CAD PBR</span>
         </div>
-        <p class="text-[11px] text-slate-400 hidden sm:block">Beveled CAD geometry, 1024px PBR maps, interactive training callouts & binary .GLB export</p>
+        <p class="text-[11px] text-slate-400 hidden sm:block">Filleted CAD geometry, baked normal & roughness/metal PBR maps, printed labels, training callouts & binary .GLB export</p>
       </div>
     </div>
 
@@ -235,9 +235,9 @@
           <div class="w-full sm:w-40 border-t sm:border-t-0 sm:border-l border-slate-800 pt-2 sm:pt-0 sm:pl-4">
             <div class="flex justify-between text-xs mb-1">
               <span class="font-medium text-slate-300">Studio Exposure</span>
-              <span id="exposure-val" class="mono text-slate-400">1.25</span>
+              <span id="exposure-val" class="mono text-slate-400">1.00</span>
             </div>
-            <input id="slider-exposure" type="range" min="50" max="220" value="125" class="w-full" />
+            <input id="slider-exposure" type="range" min="40" max="200" value="100" class="w-full" />
           </div>
         </div>
       </div>
@@ -312,7 +312,7 @@
           <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
             <div class="text-xs font-semibold text-white mb-1">Three.js Loader Compatibility</div>
             <p class="text-[11px] text-slate-400 leading-relaxed">
-              Exported <code class="text-sky-400 mono">.glb</code> files embed all sub-mesh names, pivot origins, and procedural PBR textures for direct <code class="text-emerald-400 mono">GLTFLoader</code> use.
+              Exported <code class="text-sky-400 mono">.glb</code> files embed all sub-mesh names, pivot origins, and procedural PBR textures (color, normal, roughness/metal, clearcoat) for direct <code class="text-emerald-400 mono">GLTFLoader</code> use.
             </p>
             <button id="btn-export-gltf-json" class="mt-2.5 w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition">
               Export Editable .GLTF (JSON)
@@ -354,130 +354,480 @@
 
   <script>
     // ============================================================================
-    // 1. HIGH-RESOLUTION 1024px PROCEDURAL PBR TEXTURE ENGINE (Baked for GLB)
+    // 1. PROCEDURAL PBR TEXTURE ENGINE (Color + Normal + Roughness/Metal maps, baked into GLB)
     // ============================================================================
+    // Seeded PRNG so every texture (and therefore every exported .glb) is reproducible run to run
+    function seededRandom(seed) {
+      let s = seed >>> 0;
+      return () => {
+        s = (s + 0x6d2b79f5) >>> 0;
+        let t = s;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    // Colors are authored as sRGB hex (what a color picker shows) and converted to the linear values
+    // the PBR shaders and glTF baseColorFactor expect. Without this "black" plastic renders mid-grey.
+    function srgb(hex) {
+      return new THREE.Color(hex).convertSRGBToLinear();
+    }
+
     const ProceduralTextures = {
       cache: {},
 
-      // 1A. Anisotropic Linear Brushed Nickel / Stainless / Aluminum Texture
-      getBrushedMetal() {
-        if (this.cache.brushedMetal) return this.cache.brushedMetal;
-        const canvas = document.createElement('canvas');
-        canvas.width = 1024;
-        canvas.height = 1024;
-        const ctx = canvas.getContext('2d');
+      canvas(w, h = w) {
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        return c;
+      },
 
-        const grad = ctx.createLinearGradient(0, 0, 1024, 1024);
-        grad.addColorStop(0, '#dcdfe4');
-        grad.addColorStop(0.5, '#eef1f6');
-        grad.addColorStop(1, '#d2d7df');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 1024, 1024);
+      // 2D context kept in CPU memory: these canvases are read back with getImageData to derive
+      // height/normal data, which is very slow on a GPU-accelerated canvas
+      readableContext(canvas) {
+        return canvas.getContext('2d', { willReadFrequently: true });
+      },
 
-        // Micro-machined directional brush strokes
-        for (let i = 0; i < 14000; i++) {
-          const x = Math.random() * 1024;
-          const y = Math.random() * 1024;
-          const len = 45 + Math.random() * 220;
-          const lum = 175 + Math.floor(Math.random() * 75);
-          ctx.strokeStyle = `rgba(${lum}, ${lum + 2}, ${lum + 5}, 0.22)`;
-          ctx.lineWidth = 0.6 + Math.random() * 1.1;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + len, y + (Math.random() - 0.5) * 0.8);
-          ctx.stroke();
-        }
-
+      // Color maps are tagged sRGB, data maps (normal, roughness/metal) stay linear. Opaque maps use
+      // RGBFormat so GLTFExporter embeds compact JPEGs; maps with cutouts keep RGBA (PNG).
+      toTexture(canvas, { color = false, alpha = false, repeat = null } = {}) {
         const tex = new THREE.CanvasTexture(canvas);
+        tex.encoding = color ? THREE.sRGBEncoding : THREE.LinearEncoding;
+        tex.format = alpha ? THREE.RGBAFormat : THREE.RGBFormat;
         tex.wrapS = THREE.RepeatWrapping;
         tex.wrapT = THREE.RepeatWrapping;
-        this.cache.brushedMetal = tex;
+        tex.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
+        if (repeat) tex.repeat.set(repeat[0], repeat[1]);
         return tex;
       },
 
-      // 1B. High-Detail Green Solder-Mask PCB with Copper Bus Traces, Silkscreen & Gold Vias
-      getGreenPCB() {
-        if (this.cache.greenPCB) return this.cache.greenPCB;
-        const canvas = document.createElement('canvas');
-        canvas.width = 1024;
-        canvas.height = 1024;
-        const ctx = canvas.getContext('2d');
-
-        // Rich fiberglass emerald green base
-        ctx.fillStyle = '#0c5927';
-        ctx.fillRect(0, 0, 1024, 1024);
-
-        // Subtle fiberglass weave grid
-        ctx.strokeStyle = 'rgba(22, 118, 55, 0.25)';
-        ctx.lineWidth = 1;
-        for (let g = 0; g < 1024; g += 8) {
-          ctx.beginPath();
-          ctx.moveTo(g, 0);
-          ctx.lineTo(g, 1024);
-          ctx.stroke();
+      // Tileable fractal value noise as a Float32Array of heights in [0, 1]
+      fbm(size, baseCells, octaves, rnd, persistence = 0.5) {
+        const out = new Float32Array(size * size);
+        let amp = 1;
+        let total = 0;
+        for (let o = 0; o < octaves; o++) {
+          const n = baseCells << o;
+          const grid = new Float32Array(n * n);
+          for (let i = 0; i < grid.length; i++) grid[i] = rnd();
+          for (let y = 0; y < size; y++) {
+            const gy = (y / size) * n;
+            const y0 = Math.floor(gy);
+            const y1 = (y0 + 1) % n;
+            let fy = gy - y0;
+            fy = fy * fy * (3 - 2 * fy);
+            for (let x = 0; x < size; x++) {
+              const gx = (x / size) * n;
+              const x0 = Math.floor(gx);
+              const x1 = (x0 + 1) % n;
+              let fx = gx - x0;
+              fx = fx * fx * (3 - 2 * fx);
+              const a = grid[y0 * n + x0] + (grid[y0 * n + x1] - grid[y0 * n + x0]) * fx;
+              const b = grid[y1 * n + x0] + (grid[y1 * n + x1] - grid[y1 * n + x0]) * fx;
+              out[y * size + x] += (a + (b - a) * fy) * amp;
+            }
+          }
+          total += amp;
+          amp *= persistence;
         }
+        for (let i = 0; i < out.length; i++) out[i] /= total;
+        return out;
+      },
 
-        // High-density 45-degree serpentine copper bus traces under solder mask
-        ctx.strokeStyle = '#1d8a43';
-        ctx.lineWidth = 2.2;
-        for (let bus = 0; bus < 45; bus++) {
-          const startX = (bus * 24) % 980;
-          const startY = Math.floor(bus / 8) * 160 + 20;
-          for (let lane = 0; lane < 5; lane++) {
-            const lx = startX + lane * 4;
-            const ly = startY + lane * 4;
-            ctx.beginPath();
-            ctx.moveTo(lx, ly);
-            ctx.lineTo(lx + 90, ly);
-            ctx.lineTo(lx + 125, ly + 35);
-            ctx.lineTo(lx + 125, ly + 110);
-            ctx.stroke();
+      heightFromCanvas(canvas) {
+        const { width: w, height: h } = canvas;
+        const d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+        const out = new Float32Array(w * h);
+        for (let i = 0; i < out.length; i++) out[i] = d[i * 4] / 255;
+        return out;
+      },
+
+      // Separable wrap-around box blur, used to soften printed/etched edges before deriving normals
+      blur(src, w, h, radius) {
+        const tmp = new Float32Array(src.length);
+        const out = new Float32Array(src.length);
+        const span = radius * 2 + 1;
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let s = 0;
+            for (let k = -radius; k <= radius; k++) s += src[y * w + ((x + k + w) % w)];
+            tmp[y * w + x] = s / span;
           }
         }
-
-        // White Silkscreen Component Boxes & Reference Designators
-        ctx.strokeStyle = 'rgba(235, 245, 238, 0.55)';
-        ctx.lineWidth = 1.4;
-        for (let s = 0; s < 120; s++) {
-          const sx = (s * 83) % 980;
-          const sy = (s * 59) % 980;
-          ctx.strokeRect(sx, sy, 14, 8);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            let s = 0;
+            for (let k = -radius; k <= radius; k++) s += tmp[((y + k + h) % h) * w + x];
+            out[y * w + x] = s / span;
+          }
         }
-
-        // Gold & Tinned Copper Through-Hole Vias
-        for (let v = 0; v < 900; v++) {
-          const vx = (v * 37 + (v % 7) * 13) % 1016;
-          const vy = (v * 61 + (v % 11) * 17) % 1016;
-          ctx.fillStyle = v % 3 === 0 ? '#e5b83b' : '#9eb3a4';
-          ctx.beginPath();
-          ctx.arc(vx, vy, 2.4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#062e14';
-          ctx.beginPath();
-          ctx.arc(vx, vy, 1.0, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        this.cache.greenPCB = tex;
-        return tex;
+        return out;
       },
 
-      // 1C. Perforated Hexagonal Honeycomb Grille (With Alpha Cutout for See-Through Vents)
+      // Tangent-space normal map (OpenGL / glTF convention) from a tileable height field. Unlike
+      // bumpMap, normal maps survive GLTFExporter, so the surface relief ships inside the .glb.
+      normalCanvas(height, w, h, strength) {
+        const c = this.canvas(w, h);
+        const ctx = c.getContext('2d');
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let y = 0; y < h; y++) {
+          const ym = ((y - 1 + h) % h) * w;
+          const y0 = y * w;
+          const yp = ((y + 1) % h) * w;
+          for (let x = 0; x < w; x++) {
+            const xm = (x - 1 + w) % w;
+            const xp = (x + 1) % w;
+            const dx = height[ym + xp] + 2 * height[y0 + xp] + height[yp + xp] - height[ym + xm] - 2 * height[y0 + xm] - height[yp + xm];
+            const dy = height[yp + xm] + 2 * height[yp + x] + height[yp + xp] - height[ym + xm] - 2 * height[ym + x] - height[ym + xp];
+            // Canvas rows run downward while texture V runs upward, hence +dy on the green channel
+            const nx = -dx * strength;
+            const ny = dy * strength;
+            const inv = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+            const i = (y0 + x) * 4;
+            d[i] = (nx * inv * 0.5 + 0.5) * 255;
+            d[i + 1] = (ny * inv * 0.5 + 0.5) * 255;
+            d[i + 2] = (inv * 0.5 + 0.5) * 255;
+            d[i + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+        return c;
+      },
+
+      // glTF metallicRoughness packing: G = roughness multiplier, B = metalness multiplier. Each may be
+      // a per-pixel array or a constant; B defaults to 1 so the material's metalness slider stays live.
+      ormCanvas(w, h, rough, metal = 1) {
+        const c = this.canvas(w, h);
+        const ctx = c.getContext('2d');
+        const img = ctx.createImageData(w, h);
+        const d = img.data;
+        for (let i = 0; i < w * h; i++) {
+          const r = typeof rough === 'number' ? rough : rough[i];
+          const m = typeof metal === 'number' ? metal : metal[i];
+          d[i * 4] = 255;
+          d[i * 4 + 1] = Math.max(0, Math.min(1, r)) * 255;
+          d[i * 4 + 2] = Math.max(0, Math.min(1, m)) * 255;
+          d[i * 4 + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        return c;
+      },
+
+      // Low-frequency wipe smudges plus a few oily fingerprint whorls (0 = clean, 1 = heavy)
+      smudgeMask(size, rnd, prints) {
+        const n = this.fbm(size, 3, 4, rnd);
+        const out = new Float32Array(size * size);
+        for (let i = 0; i < out.length; i++) out[i] = Math.max(0, Math.min(1, (n[i] - 0.55) * 3)) * 0.5;
+
+        // Fingerprints rasterised analytically as concentric elliptical ridges fading outward
+        const spacing = size / 330;
+        for (let p = 0; p < prints; p++) {
+          const rx = size * (0.03 + rnd() * 0.02);
+          const cx = size * (0.15 + rnd() * 0.7);
+          const cy = size * (0.15 + rnd() * 0.7);
+          const rot = rnd() * Math.PI;
+          const cos = Math.cos(rot);
+          const sin = Math.sin(rot);
+          const reach = Math.ceil(rx * 1.4);
+          for (let y = -reach; y <= reach; y++) {
+            for (let x = -reach; x <= reach; x++) {
+              const u = x * cos + y * sin;
+              const v = (y * cos - x * sin) / 1.35;
+              const d = Math.sqrt(u * u + v * v);
+              if (d >= rx) continue;
+              const ridge = 0.5 + 0.5 * Math.cos((d / spacing) * Math.PI * 2);
+              const idx = ((Math.round(cy + y) + size) % size) * size + ((Math.round(cx + x) + size) % size);
+              out[idx] = Math.min(1, out[idx] + 0.4 * (1 - d / rx) * ridge * ridge);
+            }
+          }
+        }
+        return out;
+      },
+
+      // 1A. Brushed nickel / stainless / aluminium: directional micro-grooves, streaky roughness & smudges
+      getBrushedMetal() {
+        if (this.cache.brushed) return this.cache.brushed;
+        const S = 1024;
+        const rnd = seededRandom(7);
+        const height = new Float32Array(S * S);
+        for (let y = 0; y < S; y++) {
+          const rowBase = rnd() * 0.3;
+          height.fill(rowBase, y * S, (y + 1) * S);
+        }
+        for (let i = 0; i < 26000; i++) {
+          const y = Math.floor(rnd() * S);
+          const x0 = Math.floor(rnd() * S);
+          const len = 40 + Math.floor(rnd() * 380);
+          const amp = (rnd() - 0.5) * 0.5;
+          for (let k = 0; k < len; k++) {
+            height[y * S + ((x0 + k) % S)] += amp * Math.sin((k / len) * Math.PI);
+          }
+        }
+        const smudge = this.smudgeMask(S, rnd, 3);
+
+        const color = this.canvas(S);
+        const cctx = color.getContext('2d');
+        const img = cctx.createImageData(S, S);
+        const rough = new Float32Array(S * S);
+        for (let i = 0; i < S * S; i++) {
+          const streak = Math.max(0, Math.min(1, height[i] + 0.25));
+          const v = (0.95 + 0.05 * streak - 0.03 * smudge[i]) * 255;
+          img.data[i * 4] = v;
+          img.data[i * 4 + 1] = v;
+          img.data[i * 4 + 2] = v;
+          img.data[i * 4 + 3] = 255;
+          rough[i] = 0.8 + 0.12 * (1 - streak) + 0.25 * smudge[i];
+        }
+        cctx.putImageData(img, 0, 0);
+
+        this.cache.brushed = {
+          map: this.toTexture(color, { color: true }),
+          normalMap: this.toTexture(this.normalCanvas(height, S, S, 0.09)),
+          ormMap: this.toTexture(this.ormCanvas(S, S, rough))
+        };
+        return this.cache.brushed;
+      },
+
+      // 1B. Mirror-polished chrome / gold plate: flat, but with faint smudges & fingerprints in roughness
+      getPolishedSmudges() {
+        if (this.cache.polished) return this.cache.polished;
+        const S = 512;
+        const smudge = this.smudgeMask(S, seededRandom(11), 3);
+        const rough = new Float32Array(S * S);
+        for (let i = 0; i < rough.length; i++) rough[i] = 0.55 + 0.45 * smudge[i];
+        this.cache.polished = { ormMap: this.toTexture(this.ormCanvas(S, S, rough)) };
+        return this.cache.polished;
+      },
+
+      // 1C. EDM spark-textured injection-moulded plastic: fine grain + pits, gentle gloss variation
+      getPlasticGrain() {
+        if (this.cache.plastic) return this.cache.plastic;
+        const S = 512;
+        const rnd = seededRandom(23);
+        const height = this.fbm(S, 128, 2, rnd, 0.6);
+        for (let i = 0; i < 6000; i++) {
+          const x = Math.floor(rnd() * S);
+          const y = Math.floor(rnd() * S);
+          const v = rnd() * 0.25;
+          height[y * S + x] -= v;
+          height[y * S + ((x + 1) % S)] -= v * 0.5;
+          height[((y + 1) % S) * S + x] -= v * 0.5;
+        }
+        const wear = this.fbm(S, 4, 3, rnd);
+        const rough = new Float32Array(S * S);
+        for (let i = 0; i < rough.length; i++) rough[i] = 0.86 + 0.14 * wear[i];
+        this.cache.plastic = {
+          normalMap: this.toTexture(this.normalCanvas(this.blur(height, S, S, 1), S, S, 0.5), { repeat: [3, 3] }),
+          ormMap: this.toTexture(this.ormCanvas(S, S, rough), { repeat: [3, 3] })
+        };
+        return this.cache.plastic;
+      },
+
+      // 1D. Electrostatic powder-coat paint on steel: soft "orange peel" undulation
+      getPowderCoat() {
+        if (this.cache.powder) return this.cache.powder;
+        const S = 512;
+        const rnd = seededRandom(31);
+        const height = this.fbm(S, 24, 4, rnd, 0.55);
+        const rough = new Float32Array(S * S);
+        const wear = this.fbm(S, 3, 3, rnd);
+        for (let i = 0; i < rough.length; i++) rough[i] = 0.9 + 0.1 * wear[i];
+        this.cache.powder = {
+          normalMap: this.toTexture(this.normalCanvas(height, S, S, 0.45), { repeat: [2, 2] }),
+          ormMap: this.toTexture(this.ormCanvas(S, S, rough), { repeat: [2, 2] })
+        };
+        return this.cache.powder;
+      },
+
+      // 1E. Green solder-mask PCB: copper pours & traces under the mask, exposed tin/gold pads, vias,
+      // white silkscreen with reference designators. Every feature is painted into colour, height and
+      // roughness/metal layers together so the relief and metallic pads line up with the artwork.
+      getPCB() {
+        if (this.cache.pcb) return this.cache.pcb;
+        const S = 2048;
+        const rnd = seededRandom(1987);
+        const col = this.canvas(S);
+        const hgt = this.canvas(S);
+        const orm = this.canvas(S);
+        const layers = [col, hgt, orm].map((c) => this.readableContext(c));
+
+        const paint = (draw, color, height, rough, metal, stroke = 0) => {
+          const g = Math.round(height * 255);
+          const styles = [color, `rgb(${g},${g},${g})`, `rgb(255,${Math.round(rough * 255)},${Math.round(metal * 255)})`];
+          layers.forEach((ctx, i) => {
+            ctx.fillStyle = styles[i];
+            ctx.strokeStyle = styles[i];
+            ctx.lineWidth = stroke;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            draw(ctx);
+            if (stroke) ctx.stroke();
+            else ctx.fill();
+          });
+        };
+        const rect = (x, y, w, h) => (ctx) => ctx.rect(x, y, w, h);
+        const circle = (x, y, r) => (ctx) => ctx.arc(x, y, r, 0, Math.PI * 2);
+        const poly = (pts) => (ctx) => {
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        };
+
+        const MASK = '#0b4a25';
+        const COPPER_UNDER_MASK = '#146634';
+        const TIN = '#c9cec9';
+        const GOLD = '#e8c06a';
+        const SILK = '#eef2ec';
+
+        // Base laminate under the mask, plus faint glass-fibre weave in the colour layer only
+        paint(rect(0, 0, S, S), MASK, 0.3, 0.55, 0);
+        layers[0].strokeStyle = 'rgba(255,255,255,0.025)';
+        layers[0].lineWidth = 1;
+        for (let g = 0; g < S; g += 6) {
+          layers[0].beginPath();
+          layers[0].moveTo(g, 0);
+          layers[0].lineTo(g, S);
+          layers[0].moveTo(0, g);
+          layers[0].lineTo(S, g);
+          layers[0].stroke();
+        }
+
+        // Copper ground pours (visible as slightly lighter, raised regions through the mask)
+        for (let p = 0; p < 14; p++) {
+          const x = rnd() * S;
+          const y = rnd() * S;
+          const w = 120 + rnd() * 320;
+          const h = 90 + rnd() * 260;
+          const c = 18 + rnd() * 30;
+          paint(poly([[x + c, y], [x + w, y], [x + w, y + h - c], [x + w - c, y + h], [x, y + h], [x, y + c]]), COPPER_UNDER_MASK, 0.42, 0.5, 0);
+        }
+
+        // Routed signal buses: parallel traces with 45-degree bends, ending in vias
+        const vias = [];
+        for (let b = 0; b < 70; b++) {
+          const lanes = 3 + Math.floor(rnd() * 8);
+          const pitch = 9 + rnd() * 4;
+          const x0 = rnd() * S;
+          const y0 = rnd() * S;
+          const run1 = 60 + rnd() * 340;
+          const diag = 30 + rnd() * 120;
+          const run2 = 40 + rnd() * 300;
+          const dirX = rnd() < 0.5 ? 1 : -1;
+          const dirY = rnd() < 0.5 ? 1 : -1;
+          const vertical = rnd() < 0.5;
+          const width = 3 + rnd() * 2.5;
+          for (let l = 0; l < lanes; l++) {
+            const o = l * pitch;
+            let pts;
+            if (vertical) {
+              pts = [[x0 + o, y0], [x0 + o, y0 + dirY * run1], [x0 + o + dirX * diag, y0 + dirY * (run1 + diag)], [x0 + o + dirX * diag, y0 + dirY * (run1 + diag + run2)]];
+            } else {
+              pts = [[x0, y0 + o], [x0 + dirX * run1, y0 + o], [x0 + dirX * (run1 + diag), y0 + o + dirY * diag], [x0 + dirX * (run1 + diag + run2), y0 + o + dirY * diag]];
+            }
+            paint(poly(pts), COPPER_UNDER_MASK, 0.5, 0.5, 0, width);
+            vias.push(pts[pts.length - 1]);
+          }
+        }
+        for (let v = 0; v < 900; v++) vias.push([rnd() * S, rnd() * S]);
+
+        // Vias: most tented under mask, some with exposed tin annular rings and drilled barrels
+        vias.forEach(([x, y]) => {
+          if (rnd() < 0.7) {
+            paint(circle(x, y, 5), COPPER_UNDER_MASK, 0.56, 0.45, 0);
+          } else {
+            paint(circle(x, y, 5.5), TIN, 0.62, 0.35, 1);
+            paint(circle(x, y, 2.4), '#08130c', 0.0, 0.9, 0);
+          }
+        });
+
+        // Passive SMD footprints (0603 / 0805) with silkscreen outlines and designators
+        const prefixes = ['C', 'R', 'R', 'C', 'L', 'D', 'Q'];
+        layers.forEach((ctx) => {
+          ctx.textBaseline = 'middle';
+        });
+        for (let s = 0; s < 260; s++) {
+          const x = 30 + rnd() * (S - 60);
+          const y = 30 + rnd() * (S - 60);
+          const big = rnd() < 0.3;
+          const pw = big ? 11 : 8;
+          const ph = big ? 13 : 9;
+          const gap = big ? 16 : 11;
+          const rot = rnd() < 0.5;
+          const pad = rnd() < 0.75 ? TIN : GOLD;
+          const [ax, ay, bx, by] = rot ? [x, y, x, y + gap + ph] : [x, y, x + gap + pw, y];
+          paint(rect(ax, ay, rot ? ph : pw, rot ? pw : ph), pad, 0.68, 0.32, 1);
+          paint(rect(bx, by, rot ? ph : pw, rot ? pw : ph), pad, 0.68, 0.32, 1);
+          const ow = rot ? ph + 8 : gap + pw * 2 + 8;
+          const oh = rot ? gap + pw + ph + 8 : ph + 8;
+          paint(rect(x - 4, y - 4, ow, oh), SILK, 0.62, 0.85, 0, 1.6);
+          const label = prefixes[s % prefixes.length] + (10 + Math.floor(rnd() * 290));
+          layers.forEach((ctx, i) => {
+            ctx.font = '600 13px Arial, Helvetica, sans-serif';
+            ctx.fillStyle = [SILK, 'rgb(160,160,160)', 'rgb(255,217,0)'][i];
+            ctx.fillText(label, x + ow + 2, y + oh / 2 - 4);
+          });
+        }
+
+        // Quad-flat-pack IC footprints: rows of gold pads on four sides, outline, pin-1 dot
+        for (let q = 0; q < 10; q++) {
+          const x = 80 + rnd() * (S - 260);
+          const y = 80 + rnd() * (S - 260);
+          const n = 10 + Math.floor(rnd() * 8);
+          const pitch = 9;
+          const body = n * pitch + 18;
+          for (let i = 0; i < n; i++) {
+            const o = 12 + i * pitch;
+            paint(rect(x + o, y - 18, 5, 16), GOLD, 0.7, 0.3, 1);
+            paint(rect(x + o, y + body + 2, 5, 16), GOLD, 0.7, 0.3, 1);
+            paint(rect(x - 18, y + o, 16, 5), GOLD, 0.7, 0.3, 1);
+            paint(rect(x + body + 2, y + o, 16, 5), GOLD, 0.7, 0.3, 1);
+          }
+          paint(rect(x - 2, y - 2, body + 4, body + 4), SILK, 0.62, 0.85, 0, 2);
+          paint(circle(x + 10, y + 10, 4), SILK, 0.62, 0.85, 0);
+          layers.forEach((ctx, i) => {
+            ctx.font = '700 16px Arial, Helvetica, sans-serif';
+            ctx.fillStyle = [SILK, 'rgb(160,160,160)', 'rgb(255,217,0)'][i];
+            ctx.fillText('U' + (q + 1), x + body + 24, y + 8);
+          });
+        }
+
+        // Fiducial marks and board-level silkscreen text
+        [[60, 60], [S - 60, 60], [60, S - 60]].forEach(([x, y]) => {
+          paint(circle(x, y, 16), '#0a3d1d', 0.25, 0.6, 0);
+          paint(circle(x, y, 7), GOLD, 0.7, 0.28, 1);
+        });
+        const notes = ['MB-ATX REV 1.02', 'ROHS  94V-0  E-246810', 'PCB LOT 2614-A', '+12V', 'GND', 'VCORE', 'JP1', 'CLR_CMOS', 'SB_PWR'];
+        notes.forEach((t, i) => {
+          layers.forEach((ctx, li) => {
+            ctx.font = `700 ${i < 3 ? 26 : 18}px Arial, Helvetica, sans-serif`;
+            ctx.fillStyle = [SILK, 'rgb(160,160,160)', 'rgb(255,217,0)'][li];
+            ctx.fillText(t, 140 + ((i * 613) % (S - 420)), 180 + ((i * 457) % (S - 300)));
+          });
+        });
+
+        const height = this.blur(this.heightFromCanvas(hgt), S, S, 1);
+        this.cache.pcb = {
+          map: this.toTexture(col, { color: true }),
+          normalMap: this.toTexture(this.normalCanvas(height, S, S, 1.4)),
+          ormMap: this.toTexture(orm)
+        };
+        return this.cache.pcb;
+      },
+
+      // 1F. Perforated hexagonal honeycomb grille. The cutouts live in the base-colour alpha channel
+      // (not alphaMap, which GLTFExporter ignores) so exported grilles stay see-through.
       getHoneycombGrille() {
         if (this.cache.honeycomb) return this.cache.honeycomb;
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-
-        // Solid metal web base
+        const S = 512;
+        const canvas = this.canvas(S);
+        const ctx = this.readableContext(canvas);
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, 512, 512);
+        ctx.fillRect(0, 0, S, S);
 
-        // Punch out transparent hexagonal holes (using destination-out for genuine alpha cutout)
+        // Punch transparent hexagonal holes (destination-out gives a genuine alpha cutout)
         const r = 18;
         const dx = r * 1.78;
         const dy = r * 1.54;
@@ -499,66 +849,347 @@
           }
         }
 
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(3.5, 2.5);
-        this.cache.honeycomb = tex;
-        return tex;
+        // Rounded punched edges: blurred web mask as height
+        const d = ctx.getImageData(0, 0, S, S).data;
+        const web = new Float32Array(S * S);
+        for (let i = 0; i < web.length; i++) web[i] = d[i * 4 + 3] / 255;
+        const repeat = [3.5, 2.5];
+        this.cache.honeycomb = {
+          map: this.toTexture(canvas, { color: true, alpha: true, repeat }),
+          normalMap: this.toTexture(this.normalCanvas(this.blur(web, S, S, 2), S, S, 2.5), { repeat })
+        };
+        return this.cache.honeycomb;
       },
 
-      // 1D. Gold LGA CPU Contact Pad Matrix Texture (115x / 1700 Land Grid Array)
+      // 1G. Gold LGA land-grid contact pads on green substrate with central capacitor cluster
       getLGAPadArray() {
-        if (this.cache.lgaPads) return this.cache.lgaPads;
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-
-        ctx.fillStyle = '#0b4f24';
-        ctx.fillRect(0, 0, 512, 512);
-
-        ctx.fillStyle = '#ebb834';
-        for (let r = 16; r < 496; r += 10) {
-          for (let c = 16; c < 496; c += 10) {
-            // Leave central capacitor cavity clear
-            if (r > 180 && r < 330 && c > 180 && c < 330) continue;
-            ctx.fillRect(c, r, 6.5, 6.5);
+        if (this.cache.lga) return this.cache.lga;
+        const S = 1024;
+        const col = this.canvas(S);
+        const hgt = this.canvas(S);
+        const orm = this.canvas(S);
+        const layers = [col, hgt, orm].map((c) => this.readableContext(c));
+        const fill = (x, y, w, h, color, height, rough, metal) => {
+          const g = Math.round(height * 255);
+          [color, `rgb(${g},${g},${g})`, `rgb(255,${Math.round(rough * 255)},${Math.round(metal * 255)})`].forEach((style, i) => {
+            layers[i].fillStyle = style;
+            layers[i].fillRect(x, y, w, h);
+          });
+        };
+        fill(0, 0, S, S, '#0e5a2c', 0.2, 0.5, 0);
+        for (let r = 32; r < S - 32; r += 20) {
+          for (let c = 32; c < S - 32; c += 20) {
+            if (r > 360 && r < 660 && c > 360 && c < 660) continue;
+            fill(c, r, 13, 13, '#ffe29b', 0.8, 0.3, 1);
           }
         }
+        const rnd = seededRandom(5);
+        for (let k = 0; k < 40; k++) {
+          const x = 390 + rnd() * 230;
+          const y = 390 + rnd() * 230;
+          fill(x, y, 22, 11, '#c9cec9', 0.9, 0.35, 1);
+          fill(x + 5, y, 12, 11, '#8a6a43', 1, 0.6, 0);
+        }
+        this.cache.lga = {
+          map: this.toTexture(col, { color: true }),
+          normalMap: this.toTexture(this.normalCanvas(this.blur(this.heightFromCanvas(hgt), S, S, 1), S, S, 1.2)),
+          ormMap: this.toTexture(orm)
+        };
+        return this.cache.lga;
+      },
 
-        const tex = new THREE.CanvasTexture(canvas);
-        this.cache.lgaPads = tex;
+      // ------------------------------------------------------------------------
+      // Printed labels, laser etching & sleeve artwork (generic, unbranded)
+      // ------------------------------------------------------------------------
+      artwork(key, w, h, draw, { alpha = true, clamp = true } = {}) {
+        if (this.cache[key]) return this.cache[key];
+        const canvas = this.canvas(w, h);
+        const ctx = canvas.getContext('2d');
+        draw(ctx, w, h, seededRandom(key.length * 977 + w));
+        const tex = this.toTexture(canvas, { color: true, alpha });
+        if (clamp) {
+          tex.wrapS = THREE.ClampToEdgeWrapping;
+          tex.wrapT = THREE.ClampToEdgeWrapping;
+        }
+        this.cache[key] = tex;
         return tex;
       },
 
-      // 1E. EDM Spark-Textured Injection-Molded ABS Plastic Micro-Grain
-      getMattePlastic() {
-        if (this.cache.plastic) return this.cache.plastic;
-        const canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#808080';
-        ctx.fillRect(0, 0, 512, 512);
-        for (let i = 0; i < 18000; i++) {
-          const v = 108 + Math.floor(Math.random() * 42);
-          ctx.fillStyle = `rgb(${v},${v},${v})`;
-          ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+      roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+      },
+
+      barcode(ctx, x, y, w, h, rnd) {
+        let cx = x;
+        while (cx < x + w) {
+          const bar = 1 + Math.floor(rnd() * 3.2);
+          if (rnd() < 0.55) ctx.fillRect(cx, y, bar * (w / 160), h);
+          cx += (bar + 1) * (w / 160);
         }
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(2, 2);
-        this.cache.plastic = tex;
-        return tex;
+      },
+
+      dataMatrix(ctx, x, y, size, rnd, cells = 14) {
+        const c = size / cells;
+        for (let i = 0; i < cells; i++) {
+          for (let j = 0; j < cells; j++) {
+            const edge = i === 0 || j === cells - 1 || (j === 0 && i % 2 === 0) || (i === cells - 1 && j % 2 === 1);
+            if (edge || (i > 0 && j < cells - 1 && rnd() < 0.5)) ctx.fillRect(x + i * c, y + j * c, c, c);
+          }
+        }
+      },
+
+      text(ctx, str, x, y, size, weight = 600, align = 'left', family = 'Arial, Helvetica, sans-serif') {
+        ctx.font = `${weight} ${size}px ${family}`;
+        ctx.textAlign = align;
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(str, x, y);
+      },
+
+      // Round spec sticker on the fan motor hub
+      getFanHubLabel() {
+        return this.artwork('fanHub', 512, 512, (ctx, w, h) => {
+          ctx.fillStyle = '#16171a';
+          ctx.beginPath();
+          ctx.arc(w / 2, h / 2, w / 2 - 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = '#c9ccd2';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.arc(w / 2, h / 2, w / 2 - 26, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = '#e8eaee';
+          this.text(ctx, 'DC BRUSHLESS', w / 2, 170, 40, 700, 'center');
+          this.text(ctx, 'MODEL CF120-25H', w / 2, 240, 32, 600, 'center');
+          this.text(ctx, 'DC 12V  0.20A', w / 2, 310, 44, 700, 'center');
+          this.text(ctx, 'LOT 2614  3-PIN', w / 2, 370, 26, 500, 'center');
+        });
+      },
+
+      // Large white drive label with spec block, serial barcode & handling warning
+      getHDDLabel() {
+        return this.artwork('hddLabel', 1024, 640, (ctx, w, h, rnd) => {
+          ctx.fillStyle = '#f3f3ef';
+          this.roundRect(ctx, 4, 4, w - 8, h - 8, 22);
+          ctx.fill();
+          ctx.fillStyle = '#1d2a44';
+          ctx.fillRect(4, 26, w - 8, 92);
+          ctx.fillStyle = '#ffffff';
+          this.text(ctx, '3.5" SATA HARD DISK DRIVE', 40, 88, 46, 800);
+          ctx.fillStyle = '#16171a';
+          this.text(ctx, '1 TB', 40, 190, 64, 800);
+          this.text(ctx, '7200 RPM  ·  64 MB', 40, 240, 30, 600);
+          this.text(ctx, 'SATA 6.0 Gb/s', 40, 282, 30, 600);
+          this.text(ctx, 'MODEL: HD1000-S72', 40, 360, 26, 600, 'left', 'monospace');
+          const sn = Array.from({ length: 8 }, () => 'ABCDEFGHJKLMNPRSTVWXZ0123456789'[Math.floor(rnd() * 31)]).join('');
+          this.text(ctx, 'S/N: ' + sn, 40, 398, 26, 600, 'left', 'monospace');
+          this.text(ctx, 'DATE: 2026-03   FW: CC45', 40, 436, 26, 600, 'left', 'monospace');
+          this.barcode(ctx, 40, 456, 330, 70, rnd);
+          this.text(ctx, '+5V  0.55A    +12V  0.45A', w - 40, 190, 26, 600, 'right', 'monospace');
+          this.dataMatrix(ctx, w - 170, 220, 130, rnd);
+          this.barcode(ctx, w - 370, 400, 330, 70, rnd);
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#16171a';
+          ctx.strokeRect(w - 370, 500, 330, 100);
+          ctx.beginPath();
+          ctx.moveTo(w - 340, 585);
+          ctx.lineTo(w - 310, 525);
+          ctx.lineTo(w - 280, 585);
+          ctx.closePath();
+          ctx.stroke();
+          this.text(ctx, '!', w - 310, 578, 34, 800, 'center');
+          this.text(ctx, 'Handle with care.', w - 265, 545, 22, 600);
+          this.text(ctx, 'ESD sensitive device.', w - 265, 575, 22, 600);
+        });
+      },
+
+      // PSU side rating label: AC input, DC output table, warnings
+      getPSULabel() {
+        return this.artwork('psuLabel', 1024, 600, (ctx, w, h, rnd) => {
+          ctx.fillStyle = '#f2f2ee';
+          this.roundRect(ctx, 4, 4, w - 8, h - 8, 16);
+          ctx.fill();
+          ctx.fillStyle = '#121316';
+          this.text(ctx, 'ATX POWER SUPPLY', 36, 74, 50, 800);
+          this.text(ctx, '500W', w - 36, 74, 56, 800, 'right');
+          this.text(ctx, 'MODEL: PS-500ATX   AC INPUT: 100-240V~  8-4A  50/60Hz', 36, 120, 24, 600);
+          const cols = ['DC OUTPUT', '+3.3V', '+5V', '+12V', '-12V', '+5VSB'];
+          const amps = ['MAX', '24A', '20A', '38A', '0.3A', '2.5A'];
+          const cw = (w - 72) / cols.length;
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = '#121316';
+          ctx.strokeRect(36, 150, w - 72, 150);
+          ctx.beginPath();
+          ctx.moveTo(36, 225);
+          ctx.lineTo(w - 36, 225);
+          for (let i = 1; i < cols.length; i++) {
+            ctx.moveTo(36 + i * cw, 150);
+            ctx.lineTo(36 + i * cw, 300);
+          }
+          ctx.stroke();
+          cols.forEach((c, i) => {
+            this.text(ctx, c, 36 + i * cw + cw / 2, 200, 26, 700, 'center');
+            this.text(ctx, amps[i], 36 + i * cw + cw / 2, 275, 30, 600, 'center');
+          });
+          this.text(ctx, '+3.3V & +5V COMBINED 130W MAX      TOTAL OUTPUT 500W MAX', 36, 345, 22, 600);
+          ctx.beginPath();
+          ctx.moveTo(60, 520);
+          ctx.lineTo(110, 420);
+          ctx.lineTo(160, 520);
+          ctx.closePath();
+          ctx.stroke();
+          ctx.fillStyle = '#121316';
+          ctx.beginPath();
+          ctx.moveTo(116, 448);
+          ctx.lineTo(96, 482);
+          ctx.lineTo(112, 482);
+          ctx.lineTo(102, 510);
+          ctx.lineTo(126, 472);
+          ctx.lineTo(110, 472);
+          ctx.closePath();
+          ctx.fill();
+          this.text(ctx, 'CAUTION: Risk of electric shock.', 190, 440, 24, 700);
+          this.text(ctx, 'Do not remove cover. No user', 190, 474, 22, 600);
+          this.text(ctx, 'serviceable parts inside.', 190, 506, 22, 600);
+          this.barcode(ctx, w - 400, 410, 360, 90, rnd);
+          this.text(ctx, 'S/N PS5A2614' + Math.floor(rnd() * 90000 + 10000), w - 220, 540, 24, 600, 'center', 'monospace');
+        });
+      },
+
+      // Small module label across the first DRAM packages
+      getRAMLabel() {
+        return this.artwork('ramLabel', 640, 320, (ctx, w, h, rnd) => {
+          ctx.fillStyle = '#f4f4f0';
+          this.roundRect(ctx, 3, 3, w - 6, h - 6, 10);
+          ctx.fill();
+          ctx.fillStyle = '#121316';
+          this.text(ctx, '4GB 1Rx8 PC3-12800U', 24, 62, 40, 800);
+          this.text(ctx, 'DDR3-1600  CL11  1.5V', 24, 112, 32, 600);
+          this.barcode(ctx, 24, 140, 380, 90, rnd);
+          this.text(ctx, 'S/N ' + Math.floor(rnd() * 9e7 + 1e7), 24, 280, 26, 600, 'left', 'monospace');
+          this.dataMatrix(ctx, w - 170, 130, 140, rnd);
+        });
+      },
+
+      // Laser-etched marking on the CPU heat spreader (dark, slightly rougher than the nickel)
+      getIHSEtch() {
+        return this.artwork('ihsEtch', 1024, 512, (ctx, w, h, rnd) => {
+          ctx.fillStyle = 'rgba(38,38,40,0.85)';
+          this.text(ctx, 'PROCESSOR CORE X4', 40, 90, 64, 700);
+          this.text(ctx, '3.20GHZ / 8M / 95W', 40, 180, 54, 600);
+          this.text(ctx, 'LGA SOCKET  SR2C4', 40, 268, 54, 600);
+          this.text(ctx, 'L614C0' + Math.floor(rnd() * 900 + 100), 40, 356, 54, 600);
+          this.text(ctx, '© 2026', 40, 444, 44, 600);
+          this.dataMatrix(ctx, w - 250, 250, 210, rnd, 16);
+        });
+      },
+
+      // Laser marking on DRAM / IC epoxy packages (light grey on black)
+      getICMarking() {
+        return this.artwork('icMark', 256, 384, (ctx, w, h) => {
+          ctx.fillStyle = 'rgba(200,202,206,0.75)';
+          ctx.beginPath();
+          ctx.arc(34, 34, 12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.save();
+          ctx.translate(w / 2, h / 2);
+          ctx.rotate(-Math.PI / 2);
+          this.text(ctx, 'D3 2G08', 0, -36, 40, 700, 'center');
+          this.text(ctx, 'K4B2G0846', 0, 8, 32, 600, 'center');
+          this.text(ctx, 'HCH9  248', 0, 50, 32, 600, 'center');
+          ctx.restore();
+        });
+      },
+
+      // Printed bezel logo on the optical drive tray door
+      getDVDBezelPrint() {
+        return this.artwork('dvdBezel', 512, 128, (ctx) => {
+          ctx.fillStyle = 'rgba(214,218,224,0.9)';
+          this.text(ctx, 'DVD±RW', 8, 78, 72, 800, 'left', '"Arial Black", Arial, sans-serif');
+          this.text(ctx, 'MULTI RECORDER', 300, 74, 28, 600);
+        });
+      },
+
+      // Engraved top of a CR2032 lithium coin cell
+      getCoinCellTop() {
+        return this.artwork('coinCell', 256, 256, (ctx, w, h) => {
+          ctx.fillStyle = 'rgba(60,62,66,0.7)';
+          this.text(ctx, '+', w / 2, 92, 70, 700, 'center');
+          this.text(ctx, 'CR2032', w / 2, 152, 40, 700, 'center');
+          this.text(ctx, '3V LITHIUM', w / 2, 194, 26, 600, 'center');
+        });
+      },
+
+      // PVC capacitor sleeve with negative-polarity stripe (wraps around a lathe's U coordinate)
+      getCapacitorSleeve(baseHex, stripeHex) {
+        return this.artwork('capSleeve_' + baseHex + stripeHex, 256, 64, (ctx, w, h) => {
+          ctx.fillStyle = baseHex;
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = stripeHex;
+          ctx.fillRect(w * 0.06, 0, w * 0.17, h);
+          ctx.fillStyle = baseHex;
+          for (let y = 6; y < h; y += 14) ctx.fillRect(w * 0.12, y, w * 0.05, 4);
+        }, { alpha: false, clamp: false });
       }
     };
 
     // ============================================================================
-    // 2. CAD PRECISION GEOMETRY HELPERS (Beveled Extrusions, Screws & Swept Blades)
+    // 2. CAD PRECISION GEOMETRY HELPERS (Beveled Extrusions, Filleted Primitives, Decals & Parts)
     // ============================================================================
     const CAD = {
+      geometryCache: new Map(),
+
+      // Identical parts (fins, latches, capacitors, screws) share one geometry so GLTFExporter writes
+      // the vertex data once and instances it, keeping exported .glb files compact
+      shared(key, build) {
+        let geo = this.geometryCache.get(key);
+        if (!geo) {
+          geo = build();
+          this.geometryCache.set(key, geo);
+        }
+        return geo;
+      },
+
+      // Weld identical corners (position + normal + uv) into an indexed mesh. ExtrudeGeometry is
+      // emitted unindexed, so this shrinks its exported vertex data several times over.
+      weld(geometry) {
+        const pos = geometry.attributes.position;
+        const nor = geometry.attributes.normal;
+        const uv = geometry.attributes.uv;
+        const lookup = new Map();
+        const P = [];
+        const N = [];
+        const U = [];
+        const index = [];
+        for (let i = 0; i < pos.count; i++) {
+          const key = [
+            Math.round(pos.getX(i) * 1e5), Math.round(pos.getY(i) * 1e5), Math.round(pos.getZ(i) * 1e5),
+            Math.round(nor.getX(i) * 1e3), Math.round(nor.getY(i) * 1e3), Math.round(nor.getZ(i) * 1e3),
+            Math.round(uv.getX(i) * 1e4), Math.round(uv.getY(i) * 1e4)
+          ].join(',');
+          let k = lookup.get(key);
+          if (k === undefined) {
+            k = P.length / 3;
+            lookup.set(key, k);
+            P.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+            N.push(nor.getX(i), nor.getY(i), nor.getZ(i));
+            U.push(uv.getX(i), uv.getY(i));
+          }
+          index.push(k);
+        }
+        const out = new THREE.BufferGeometry();
+        out.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+        out.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+        out.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2));
+        out.setIndex(index);
+        return out;
+      },
+
       // Normalize ExtrudeGeometry UVs to [0..1] so procedural textures map cleanly
       normalizeUVs(geometry) {
         geometry.computeBoundingBox();
@@ -587,6 +1218,72 @@
         }
         geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
         return geometry;
+      },
+
+      // Smooth shading across shallow angles (bevel facets, arc segments) while real corners stay
+      // crisp: each corner normal sums the area-weighted normals of faces meeting at that point
+      // within the crease angle, so bevels read as rounded fillets instead of faceted chamfers.
+      creaseNormals(geometry, creaseAngleDeg = 50) {
+        const geo = geometry.index ? geometry.toNonIndexed() : geometry;
+        const pos = geo.attributes.position;
+        const triCount = pos.count / 3;
+        const weighted = new Float32Array(triCount * 3);
+        const unit = new Float32Array(triCount * 3);
+        const a = new THREE.Vector3();
+        const b = new THREE.Vector3();
+        const c = new THREE.Vector3();
+        for (let t = 0; t < triCount; t++) {
+          a.fromBufferAttribute(pos, t * 3);
+          b.fromBufferAttribute(pos, t * 3 + 1).sub(a);
+          c.fromBufferAttribute(pos, t * 3 + 2).sub(a);
+          b.cross(c);
+          weighted.set([b.x, b.y, b.z], t * 3);
+          const len = b.length();
+          if (len > 1e-12) unit.set([b.x / len, b.y / len, b.z / len], t * 3);
+        }
+
+        const buckets = new Map();
+        for (let i = 0; i < pos.count; i++) {
+          const key = `${Math.round(pos.getX(i) * 1e5)}_${Math.round(pos.getY(i) * 1e5)}_${Math.round(pos.getZ(i) * 1e5)}`;
+          const list = buckets.get(key);
+          if (list) list.push(i);
+          else buckets.set(key, [i]);
+        }
+
+        const cosCrease = Math.cos(THREE.MathUtils.degToRad(creaseAngleDeg));
+        const normals = new Float32Array(pos.count * 3);
+        buckets.forEach((list) => {
+          list.forEach((i) => {
+            const ti = Math.floor(i / 3) * 3;
+            let nx = 0;
+            let ny = 0;
+            let nz = 0;
+            list.forEach((j) => {
+              const tj = Math.floor(j / 3) * 3;
+              if (unit[ti] * unit[tj] + unit[ti + 1] * unit[tj + 1] + unit[ti + 2] * unit[tj + 2] >= cosCrease) {
+                nx += weighted[tj];
+                ny += weighted[tj + 1];
+                nz += weighted[tj + 2];
+              }
+            });
+            if (Math.hypot(nx, ny, nz) < 1e-12) {
+              // Zero-area sliver: borrow every face normal meeting at this point
+              list.forEach((j) => {
+                const tj = Math.floor(j / 3) * 3;
+                nx += weighted[tj];
+                ny += weighted[tj + 1];
+                nz += weighted[tj + 2];
+              });
+              if (Math.hypot(nx, ny, nz) < 1e-12) ny = 1;
+            }
+            const len = Math.hypot(nx, ny, nz);
+            normals[i * 3] = nx / len;
+            normals[i * 3 + 1] = ny / len;
+            normals[i * 3 + 2] = nz / len;
+          });
+        });
+        geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+        return geo;
       },
 
       // Create a 2D Rounded Rectangle Shape centered at (0,0)
@@ -619,47 +1316,198 @@
         });
         geo.translate(0, 0, -depth / 2);
         this.normalizeUVs(geo);
-        geo.computeVertexNormals();
-        return geo;
+        return this.weld(this.creaseNormals(geo));
       },
 
       // Create a Beveled Box (Replaces sharp Minecraft-like BoxGeometry with realistic chamfered edges)
       beveledBox(w, h, d, radius = 0.012, bevel = 0.006, material, axis = 'z') {
-        let shape, geo;
-        if (axis === 'y') {
-          shape = this.roundedRectShape(w, d, radius);
-          geo = this.extrudeBeveled(shape, Math.max(0.002, h - bevel * 2), bevel, 2, 16);
-          geo.rotateX(Math.PI / 2);
-        } else if (axis === 'x') {
-          shape = this.roundedRectShape(d, h, radius);
-          geo = this.extrudeBeveled(shape, Math.max(0.002, w - bevel * 2), bevel, 2, 16);
-          geo.rotateY(Math.PI / 2);
-        } else {
-          shape = this.roundedRectShape(w, h, radius);
-          geo = this.extrudeBeveled(shape, Math.max(0.002, d - bevel * 2), bevel, 2, 16);
-        }
+        const geo = this.shared(`beveledBox:${w},${h},${d},${radius},${bevel},${axis}`, () => {
+          let g;
+          if (axis === 'y') {
+            g = this.extrudeBeveled(this.roundedRectShape(w, d, radius), Math.max(0.002, h - bevel * 2), bevel, 2, 16);
+            g.rotateX(Math.PI / 2);
+          } else if (axis === 'x') {
+            g = this.extrudeBeveled(this.roundedRectShape(d, h, radius), Math.max(0.002, w - bevel * 2), bevel, 2, 16);
+            g.rotateY(Math.PI / 2);
+          } else {
+            g = this.extrudeBeveled(this.roundedRectShape(w, h, radius), Math.max(0.002, d - bevel * 2), bevel, 2, 16);
+          }
+          return g;
+        });
         return new THREE.Mesh(geo, material);
       },
 
-      // Create a Realistic Machined Pan-Head Screw with Star/Cross Drive Recess
+      // Box with filleted edges & spherical corners (true smooth normals). A box lattice is remapped so
+      // its outer rows hug the fillet band, then every vertex is projected onto the rounded surface.
+      roundedBoxGeometry(w, h, d, radius, seg = 2) {
+        const half = [w / 2, h / 2, d / 2];
+        const r = Math.max(1e-5, Math.min(radius, half[0] * 0.999, half[1] * 0.999, half[2] * 0.999));
+        const n = seg * 2 + 1;
+        const geo = new THREE.BoxGeometry(1, 1, 1, n, n, n);
+        const pos = geo.attributes.position;
+        const nor = geo.attributes.normal;
+        const p = new THREE.Vector3();
+        const q = new THREE.Vector3();
+        const remap = (v, axis) => {
+          const k = Math.round((v + 0.5) * n);
+          if (k <= seg) return -half[axis] + r * (k / seg);
+          return half[axis] - r + r * ((k - seg - 1) / seg);
+        };
+        for (let i = 0; i < pos.count; i++) {
+          p.set(remap(pos.getX(i), 0), remap(pos.getY(i), 1), remap(pos.getZ(i), 2));
+          q.set(
+            THREE.MathUtils.clamp(p.x, -half[0] + r, half[0] - r),
+            THREE.MathUtils.clamp(p.y, -half[1] + r, half[1] - r),
+            THREE.MathUtils.clamp(p.z, -half[2] + r, half[2] - r)
+          );
+          p.sub(q).normalize();
+          nor.setXYZ(i, p.x, p.y, p.z);
+          pos.setXYZ(i, q.x + p.x * r, q.y + p.y * r, q.z + p.z * r);
+        }
+        return geo;
+      },
+
+      // Drop-in replacement for BoxGeometry: sub-millimetre edge radius scaled to the part size so every
+      // small component catches a thin specular highlight along its edges like real moulded parts
+      softBox(w, h, d) {
+        const r = Math.min(Math.min(w, h, d) * 0.18, 0.01);
+        return this.roundedBoxGeometry(w, h, d, r, r > 0.004 ? 2 : 1);
+      },
+
+      // Lathe-turned cylinder with filleted rims (capacitor cans, coin cells, hubs, rubber feet)
+      roundedCylinderGeometry(radiusTop, radiusBottom, height, fillet, radialSegments = 48, filletSegments = 4) {
+        const hh = height / 2;
+        const f = Math.max(1e-5, Math.min(fillet, hh * 0.95, radiusTop * 0.95, radiusBottom * 0.95));
+        const pts = [new THREE.Vector2(0, -hh), new THREE.Vector2((radiusBottom - f) * 0.8, -hh)];
+        for (let i = 0; i <= filletSegments; i++) {
+          const a = -Math.PI / 2 + (i / filletSegments) * (Math.PI / 2);
+          pts.push(new THREE.Vector2(radiusBottom - f + Math.cos(a) * f, -hh + f + Math.sin(a) * f));
+        }
+        for (let i = 0; i <= filletSegments; i++) {
+          const a = (i / filletSegments) * (Math.PI / 2);
+          pts.push(new THREE.Vector2(radiusTop - f + Math.cos(a) * f, hh - f + Math.sin(a) * f));
+        }
+        pts.push(new THREE.Vector2((radiusTop - f) * 0.8, hh), new THREE.Vector2(0, hh));
+        return new THREE.LatheGeometry(pts, radialSegments);
+      },
+
+      // Thin printed decal (label, etch, print) floating 0.1 mm above a surface. Its artwork carries
+      // alpha in the base-colour map so it exports as an alpha-blended glTF material.
+      decal(w, h, texture, { name = 'Printed_Decal', roughness = 0.55, metalness = 0, color = 0xffffff } = {}) {
+        const mat = new THREE.MeshStandardMaterial({
+          name,
+          map: texture,
+          color: srgb(color),
+          roughness,
+          metalness,
+          transparent: true,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -4
+        });
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+        mesh.name = name;
+        mesh.renderOrder = 2;
+        mesh.userData.decal = true;
+        return mesh;
+      },
+
+      // Machined pan-head screw: lathe-turned head with filleted crown and a recessed cross/star drive
       createFastener(radius = 0.032, height = 0.02, matMetal, matRecess) {
         const group = new THREE.Group();
-        const head = new THREE.Mesh(
-          new THREE.CylinderGeometry(radius * 0.85, radius, height, 20),
-          matMetal
-        );
-        group.add(head);
+        const headGeo = this.shared(`screwHead:${radius},${height}`, () => {
+          const pts = [
+            new THREE.Vector2(0, -height / 2),
+            new THREE.Vector2(radius, -height / 2),
+            new THREE.Vector2(radius, height * 0.05)
+          ];
+          for (let i = 1; i <= 6; i++) {
+            const a = (i / 6) * (Math.PI / 2);
+            pts.push(new THREE.Vector2(radius * 0.75 + radius * 0.25 * Math.cos(a), height * 0.05 + height * 0.45 * Math.sin(a)));
+          }
+          pts.push(new THREE.Vector2(0, height / 2));
+          return new THREE.LatheGeometry(pts, 32);
+        });
+        group.add(new THREE.Mesh(headGeo, matMetal));
 
-        const slot1 = new THREE.Mesh(
-          new THREE.BoxGeometry(radius * 1.15, height * 0.35, radius * 0.24),
-          matRecess
+        const slotGeo = this.shared(`screwSlot:${radius},${height}`, () =>
+          this.softBox(radius * 1.15, height * 0.35, radius * 0.22).translate(0, height * 0.5 - height * 0.175 + 0.0003, 0)
         );
-        slot1.position.y = height * 0.45;
-        const slot2 = slot1.clone();
-        slot2.rotation.y = Math.PI / 2;
-        const slot3 = slot1.clone();
-        slot3.rotation.y = Math.PI / 4;
-        group.add(slot1, slot2, slot3);
+        [0, Math.PI / 2, Math.PI / 4].forEach((rot) => {
+          const slot = new THREE.Mesh(slotGeo, matRecess);
+          slot.rotation.y = rot;
+          group.add(slot);
+        });
+        return group;
+      },
+
+      // Radial aluminium electrolytic capacitor: PVC sleeve with polarity stripe, rolled lip, and an
+      // aluminium top with the stamped K-shaped safety vent
+      createCapacitor(radius, height, sleeveMat, topMat, ventMat) {
+        const group = new THREE.Group();
+        const hh = height / 2;
+        const lip = radius * 0.16;
+        const key = `cap:${radius},${height}`;
+        const pts = [new THREE.Vector2(radius * 0.7, -hh), new THREE.Vector2(radius - lip * 0.5, -hh)];
+        for (let i = 0; i <= 4; i++) {
+          const a = -Math.PI / 2 + (i / 4) * (Math.PI / 2);
+          pts.push(new THREE.Vector2(radius - lip * 0.5 + Math.cos(a) * lip * 0.5, -hh + lip * 0.5 + Math.sin(a) * lip * 0.5));
+        }
+        // Rolled crimp groove just below the top, then the sleeve wraps over the rim
+        pts.push(new THREE.Vector2(radius, hh - lip * 2.4));
+        pts.push(new THREE.Vector2(radius * 0.94, hh - lip * 1.9));
+        pts.push(new THREE.Vector2(radius, hh - lip * 1.4));
+        for (let i = 0; i <= 4; i++) {
+          const a = (i / 4) * (Math.PI / 2);
+          pts.push(new THREE.Vector2(radius - lip + Math.cos(a) * lip, hh - lip + Math.sin(a) * lip));
+        }
+        pts.push(new THREE.Vector2(radius * 0.8, hh));
+        const sleeve = new THREE.Mesh(this.shared(key + ':sleeve', () => new THREE.LatheGeometry(pts, 40)), sleeveMat);
+        group.add(sleeve);
+
+        const topGeo = this.shared(key + ':top', () => new THREE.CylinderGeometry(radius * 0.84, radius * 0.84, 0.002, 40));
+        const top = new THREE.Mesh(topGeo, topMat);
+        top.position.y = hh - 0.0012;
+        group.add(top);
+
+        // Stamped K vent: a straight bar plus two diagonals branching from its midpoint
+        const ventGeo = this.shared(key + ':vent', () => this.softBox(1, 0.0012, radius * 0.09));
+        const diagAngle = Math.atan2(0.5, 0.55);
+        const diagLen = radius * Math.hypot(0.55, 0.5);
+        [
+          [radius * 1.1, -0.15 * radius, 0, Math.PI / 2],
+          [diagLen, 0.125 * radius, 0.25 * radius, -diagAngle],
+          [diagLen, 0.125 * radius, -0.25 * radius, diagAngle]
+        ].forEach(([len, x, z, rot]) => {
+          const bar = new THREE.Mesh(ventGeo, ventMat);
+          bar.scale.x = len;
+          bar.rotation.y = rot;
+          bar.position.set(x, hh + 0.0002, z);
+          group.add(bar);
+        });
+        return group;
+      },
+
+      // Toroidal power choke: painted ferrite ring wound with enamelled copper magnet wire
+      createToroidChoke(R, r, turns, coreMat, wireMat) {
+        const group = new THREE.Group();
+        const key = `choke:${R},${r},${turns}`;
+        group.add(new THREE.Mesh(this.shared(key + ':core', () => new THREE.TorusGeometry(R, r, 20, 48)), coreMat));
+        const wireR = r * 0.24;
+        const wind = r + wireR * 0.9;
+        const pts = [];
+        const coverage = Math.PI * 1.7;
+        const steps = turns * 14;
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const theta = -coverage / 2 + t * coverage + Math.PI / 2; // lead gap faces the PCB
+          const phi = t * turns * Math.PI * 2;
+          const rr = R + wind * Math.cos(phi);
+          pts.push(new THREE.Vector3(rr * Math.cos(theta), rr * Math.sin(theta), wind * Math.sin(phi)));
+        }
+        const windingGeo = this.shared(key + ':winding', () => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), steps * 2, wireR, 6, false));
+        const winding = new THREE.Mesh(windingGeo, wireMat);
+        group.add(winding);
         return group;
       },
 
@@ -668,6 +1516,7 @@
         const radialSteps = 12;
         const chordSteps = 8;
         const positions = [];
+        const uvs = [];
         const indices = [];
 
         // Generate upper and lower camber surfaces for a true 3D airfoil
@@ -693,6 +1542,7 @@
               const py = Math.sin(localArcAngle) * r;
               const pz = zHeight;
               positions.push(px, py, pz);
+              uvs.push(cIdx / chordSteps, u);
             }
           }
         }
@@ -719,6 +1569,7 @@
 
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
         geo.setIndex(indices);
         geo.computeVertexNormals();
         return new THREE.Mesh(geo, material);
@@ -728,189 +1579,107 @@
     // ============================================================================
     // 3. PHOTOREALISTIC PBR MATERIAL FACTORY
     // ============================================================================
+    // Base colours follow measured reflectance: metals use their F0 (gold, copper, nickel, chrome,
+    // aluminium), dielectrics use realistic albedo (black plastic ~3%, white nylon ~70%). Paints and
+    // plastics are non-metallic; every surface carries a normal map plus a roughness/metal map.
     function createPBRMaterials() {
-      const brushedTex = ProceduralTextures.getBrushedMetal();
-      const pcbTex = ProceduralTextures.getGreenPCB();
-      const honeycombTex = ProceduralTextures.getHoneycombGrille();
-      const lgaTex = ProceduralTextures.getLGAPadArray();
-      const plasticTex = ProceduralTextures.getMattePlastic();
+      const T = ProceduralTextures;
+      const brushed = T.getBrushedMetal();
+      const polished = T.getPolishedSmudges();
+      const plastic = T.getPlasticGrain();
+      const powder = T.getPowderCoat();
+      const pcb = T.getPCB();
+      const honeycomb = T.getHoneycombGrille();
+      const lga = T.getLGAPadArray();
+
+      const surface = (set, scale) => ({
+        normalMap: set.normalMap,
+        normalScale: new THREE.Vector2(scale, scale),
+        roughnessMap: set.ormMap,
+        metalnessMap: set.ormMap
+      });
+      const molded = (name, hex, roughness) =>
+        new THREE.MeshStandardMaterial({ name, color: srgb(hex), roughness, metalness: 0, ...surface(plastic, 0.45) });
+      const brushedMetal = (name, hex, roughness, scale = 0.7) =>
+        new THREE.MeshStandardMaterial({ name, color: srgb(hex), map: brushed.map, roughness, metalness: 1, ...surface(brushed, scale) });
+      const polishedMetal = (name, hex, roughness) =>
+        new THREE.MeshStandardMaterial({ name, color: srgb(hex), roughness, metalness: 1, roughnessMap: polished.ormMap, metalnessMap: polished.ormMap });
 
       return {
-        matteBlackPlastic: new THREE.MeshStandardMaterial({
-          name: 'Matte_Black_ABS_Plastic',
-          color: 0x1e2024,
-          roughness: 0.56,
-          metalness: 0.06,
-          bumpMap: plasticTex,
-          bumpScale: 0.0012
-        }),
+        matteBlackPlastic: molded('Matte_Black_ABS_Plastic', 0x2a2b2f, 0.62),
         chassisBlackSteel: new THREE.MeshStandardMaterial({
           name: 'PowderCoat_Black_Steel',
-          color: 0x181a20,
-          roughness: 0.42,
-          metalness: 0.48,
-          bumpMap: plasticTex,
-          bumpScale: 0.0006
-        }),
-        brushedNickel: new THREE.MeshStandardMaterial({
-          name: 'Brushed_Nickel_Plate',
-          color: 0xdce1e8,
-          map: brushedTex,
-          bumpMap: brushedTex,
-          bumpScale: 0.0014,
-          roughness: 0.22,
-          metalness: 0.92
-        }),
-        silverAluminum: new THREE.MeshStandardMaterial({
-          name: 'Brushed_Silver_Aluminum',
-          color: 0xd2d8e0,
-          map: brushedTex,
-          bumpMap: brushedTex,
-          bumpScale: 0.0009,
-          roughness: 0.30,
-          metalness: 0.88
-        }),
-        chromeMetal: new THREE.MeshStandardMaterial({
-          name: 'Mirror_Polished_Chrome',
-          color: 0xf4f7fa,
-          roughness: 0.08,
-          metalness: 0.98
-        }),
-        copperHeatpipe: new THREE.MeshStandardMaterial({
-          name: 'Sintered_Copper_Heatpipe',
-          color: 0xd97b54,
-          map: brushedTex,
-          bumpMap: brushedTex,
-          bumpScale: 0.0006,
-          roughness: 0.18,
-          metalness: 0.95
-        }),
-        greenPCB: new THREE.MeshStandardMaterial({
-          name: 'Green_SolderMask_PCB',
-          color: 0x18843c,
-          map: pcbTex,
-          bumpMap: pcbTex,
-          bumpScale: 0.0018,
-          roughness: 0.32,
-          metalness: 0.16
-        }),
-        pcbEdgeFiberglass: new THREE.MeshStandardMaterial({
-          name: 'FR4_Fiberglass_Edge',
-          color: 0x9b8942,
+          color: srgb(0x232428),
           roughness: 0.55,
-          metalness: 0.08
+          metalness: 0,
+          ...surface(powder, 0.35)
         }),
-        goldContacts: new THREE.MeshStandardMaterial({
-          name: 'Hard_Gold_Contacts',
-          color: 0xebb834,
-          roughness: 0.16,
-          metalness: 0.96
+        brushedNickel: brushedMetal('Brushed_Nickel_Plate', 0xd8d4cc, 0.34),
+        silverAluminum: brushedMetal('Brushed_Silver_Aluminum', 0xe4e6e9, 0.4),
+        chromeMetal: polishedMetal('Mirror_Polished_Chrome', 0xc4c6c5, 0.16),
+        copperHeatpipe: brushedMetal('Sintered_Copper_Heatpipe', 0xe8a483, 0.32, 0.5),
+        greenPCB: new THREE.MeshPhysicalMaterial({
+          name: 'Green_SolderMask_PCB',
+          color: 0xffffff,
+          map: pcb.map,
+          roughness: 1,
+          metalness: 1,
+          clearcoat: 0.3,
+          clearcoatRoughness: 0.28,
+          ...surface(pcb, 0.8)
         }),
+        pcbEdgeFiberglass: molded('FR4_Fiberglass_Edge', 0xbdb07c, 0.7),
+        goldContacts: polishedMetal('Hard_Gold_Contacts', 0xffe29b, 0.22),
         lgaGoldMatrix: new THREE.MeshStandardMaterial({
           name: 'LGA_Gold_Pad_Matrix',
           color: 0xffffff,
-          map: lgaTex,
-          bumpMap: lgaTex,
-          bumpScale: 0.0015,
-          roughness: 0.22,
-          metalness: 0.92
+          map: lga.map,
+          roughness: 1,
+          metalness: 1,
+          ...surface(lga, 0.8)
         }),
-        icEpoxyBlack: new THREE.MeshStandardMaterial({
-          name: 'IC_Epoxy_Package',
-          color: 0x16181c,
-          roughness: 0.44,
-          metalness: 0.08,
-          bumpMap: plasticTex,
-          bumpScale: 0.0008
-        }),
-        slotBlue: new THREE.MeshStandardMaterial({
-          name: 'DIMM_Slot_RoyalBlue',
-          color: 0x1452b8,
-          roughness: 0.38,
-          metalness: 0.05
-        }),
-        slotWhite: new THREE.MeshStandardMaterial({
-          name: 'PCI_Connector_Ivory',
-          color: 0xebe7dc,
-          roughness: 0.42,
-          metalness: 0.04
-        }),
-        portMagenta: new THREE.MeshStandardMaterial({
-          name: 'DB25_Parallel_Magenta',
-          color: 0xb02279,
-          roughness: 0.4,
-          metalness: 0.05
-        }),
-        portTeal: new THREE.MeshStandardMaterial({
-          name: 'DB9_Serial_Teal',
-          color: 0x187e7c,
-          roughness: 0.4,
-          metalness: 0.05
-        }),
-        portGreenPS2: new THREE.MeshStandardMaterial({
-          name: 'PS2_Mouse_Green',
-          color: 0x229954,
-          roughness: 0.4,
-          metalness: 0.05
-        }),
-        portPurplePS2: new THREE.MeshStandardMaterial({
-          name: 'PS2_Keyboard_Purple',
-          color: 0x6c3483,
-          roughness: 0.4,
-          metalness: 0.05
-        }),
-        wireRed: new THREE.MeshStandardMaterial({
-          name: 'PVC_Wire_Red',
-          color: 0xdc1e1e,
-          roughness: 0.34,
-          metalness: 0.05
-        }),
-        wireYellow: new THREE.MeshStandardMaterial({
-          name: 'PVC_Wire_Yellow',
-          color: 0xfacc15,
-          roughness: 0.34,
-          metalness: 0.05
-        }),
-        wireOrange: new THREE.MeshStandardMaterial({
-          name: 'PVC_Wire_Orange',
-          color: 0xea580c,
-          roughness: 0.34,
-          metalness: 0.05
-        }),
-        wirePurple: new THREE.MeshStandardMaterial({
-          name: 'PVC_Wire_Purple',
-          color: 0x7e22ce,
-          roughness: 0.34,
-          metalness: 0.05
-        }),
-        wireBlack: new THREE.MeshStandardMaterial({
-          name: 'PVC_Wire_Black',
-          color: 0x141518,
-          roughness: 0.38,
-          metalness: 0.05
-        }),
+        icEpoxyBlack: molded('IC_Epoxy_Package', 0x232427, 0.5),
+        slotBlue: molded('DIMM_Slot_RoyalBlue', 0x1d4fa8, 0.42),
+        slotWhite: molded('PCI_Connector_Ivory', 0xe6e1d3, 0.48),
+        portMagenta: molded('DB25_Parallel_Magenta', 0xb02279, 0.45),
+        portTeal: molded('DB9_Serial_Teal', 0x187e7c, 0.45),
+        portGreenPS2: molded('PS2_Mouse_Green', 0x229954, 0.45),
+        portPurplePS2: molded('PS2_Keyboard_Purple', 0x6c3483, 0.45),
+        wireRed: molded('PVC_Wire_Red', 0xc81c1c, 0.36),
+        wireYellow: molded('PVC_Wire_Yellow', 0xf0c419, 0.36),
+        wireOrange: molded('PVC_Wire_Orange', 0xe2580f, 0.36),
+        wirePurple: molded('PVC_Wire_Purple', 0x6f22b8, 0.36),
+        wireBlack: molded('PVC_Wire_Black', 0x1d1e21, 0.4),
         honeycombDark: new THREE.MeshStandardMaterial({
           name: 'Perforated_Black_Mesh',
-          color: 0x22262e,
-          alphaMap: honeycombTex,
-          alphaTest: 0.45,
-          bumpMap: honeycombTex,
-          bumpScale: 0.002,
+          color: srgb(0x2b2d31),
+          map: honeycomb.map,
+          normalMap: honeycomb.normalMap,
+          alphaTest: 0.5,
           side: THREE.DoubleSide,
-          roughness: 0.45,
-          metalness: 0.55
+          roughness: 0.55,
+          metalness: 0
         }),
         honeycombSilver: new THREE.MeshStandardMaterial({
           name: 'Perforated_Silver_Exhaust',
-          color: 0xcbd2dc,
-          alphaMap: honeycombTex,
-          alphaTest: 0.45,
-          bumpMap: honeycombTex,
-          bumpScale: 0.002,
+          color: srgb(0xd5d8dc),
+          map: honeycomb.map,
+          normalMap: honeycomb.normalMap,
+          alphaTest: 0.5,
           side: THREE.DoubleSide,
-          roughness: 0.3,
-          metalness: 0.88
-        })
+          roughness: 0.35,
+          metalness: 1
+        }),
+        // Component-level materials for electrolytic capacitors and toroidal chokes
+        capSleeveNavy: new THREE.MeshStandardMaterial({
+          name: 'Capacitor_PVC_Sleeve',
+          map: T.getCapacitorSleeve('#1c2740', '#b7bec9'),
+          roughness: 0.32,
+          metalness: 0
+        }),
+        capTopAluminum: polishedMetal('Capacitor_Aluminum_Top', 0xdcdfe3, 0.3),
+        ferriteCore: molded('Painted_Ferrite_Core', 0xd8cfa8, 0.55),
+        enamelCopperWire: polishedMetal('Enamelled_Copper_Wire', 0xd88c5a, 0.2)
       };
     }
 
@@ -982,11 +1751,17 @@
 
       // 4 Rear Curved Stator Struts & Rear Motor Cup
       const motorCup = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.22, 0.22, 0.03, 36).rotateX(Math.PI / 2),
+        CAD.roundedCylinderGeometry(0.22, 0.22, 0.03, 0.008, 64).rotateX(Math.PI / 2),
         mat.matteBlackPlastic
       );
       motorCup.position.z = -0.105;
       frameGroup.add(motorCup);
+
+      // Printed spec sticker on the rear motor cup (faces the back like on real fans)
+      const hubSticker = CAD.decal(0.36, 0.36, ProceduralTextures.getFanHubLabel(), { name: 'Fan_Hub_Spec_Sticker', roughness: 0.35 });
+      hubSticker.rotation.y = Math.PI;
+      hubSticker.position.z = -0.1205;
+      frameGroup.add(hubSticker);
 
       for (let s = 0; s < 4; s++) {
         const ang = (s / 4) * Math.PI * 2 + 0.45;
@@ -1082,18 +1857,18 @@
       const plugBody = CAD.beveledBox(0.15, 0.085, 0.115, 0.008, 0.004, mat.slotWhite);
       plugGroup.add(plugBody);
 
-      const plugCavity = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.058, 0.085), mat.icEpoxyBlack);
+      const plugCavity = new THREE.Mesh(CAD.softBox(0.04, 0.058, 0.085), mat.icEpoxyBlack);
       plugCavity.position.x = 0.062;
       plugGroup.add(plugCavity);
 
-      const guideRib1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.015, 0.012), mat.slotWhite);
+      const guideRib1 = new THREE.Mesh(CAD.softBox(0.12, 0.015, 0.012), mat.slotWhite);
       guideRib1.position.set(0, 0.046, 0.032);
       const guideRib2 = guideRib1.clone();
       guideRib2.position.z = -0.032;
       plugGroup.add(guideRib1, guideRib2);
 
       [-0.022, 0.022].forEach((pz) => {
-        const pin = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.014, 0.014), mat.goldContacts);
+        const pin = new THREE.Mesh(CAD.softBox(0.06, 0.014, 0.014), mat.goldContacts);
         pin.position.set(0.058, 0, pz);
         plugGroup.add(pin);
       });
@@ -1182,7 +1957,7 @@
 
       // 4 Cylindrical Rubber Isolation Case Feet with Chrome Trim Rings
       [[-0.72, -0.32], [0.72, -0.32], [-0.72, 0.32], [0.72, 0.32]].forEach(([fx, fz]) => {
-        const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.085, 0.065, 28), mat.icEpoxyBlack);
+        const foot = new THREE.Mesh(CAD.roundedCylinderGeometry(0.095, 0.085, 0.065, 0.018, 40), mat.icEpoxyBlack);
         foot.position.set(fx, -0.92, fz);
         chassisGroup.add(foot);
       });
@@ -1231,7 +2006,7 @@
 
       // Stamped Side Slots on Optical Cage
       for (let slot = 0; slot < 3; slot++) {
-        const slotCut = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.045, 0.84), mat.icEpoxyBlack);
+        const slotCut = new THREE.Mesh(CAD.softBox(0.32, 0.045, 0.84), mat.icEpoxyBlack);
         slotCut.position.set(0.56, 0.76 - slot * 0.16, 0);
         cagesGroup.add(slotCut);
       }
@@ -1241,7 +2016,7 @@
       cagesGroup.add(hddCage);
 
       for (let s = 0; s < 4; s++) {
-        const trayCavity = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.09, 0.84), mat.icEpoxyBlack);
+        const trayCavity = new THREE.Mesh(CAD.softBox(0.36, 0.09, 0.84), mat.icEpoxyBlack);
         trayCavity.position.set(0.58, -0.25 - s * 0.16, 0);
         cagesGroup.add(trayCavity);
       }
@@ -1286,7 +2061,7 @@
       // 7 Ventilated PCIe Expansion Slot Covers with Thumbscrews
       for (let p = 0; p < 7; p++) {
         const py = 0.16 - p * 0.068;
-        const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.046, 0.40), mat.honeycombDark);
+        const bracket = new THREE.Mesh(CAD.softBox(0.03, 0.046, 0.40), mat.honeycombDark);
         bracket.position.set(-0.865, py, 0.12);
         const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.025, 12).rotateZ(Math.PI / 2), mat.chromeMetal);
         screw.position.set(-0.85, py, 0.33);
@@ -1317,7 +2092,7 @@
 
       // Top Extruded Micro-Ridges on Cold Plate (matching reference image)
       for (let r = -3; r <= 3; r++) {
-        const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.018, 0.028), mat.brushedNickel);
+        const ridge = new THREE.Mesh(CAD.softBox(0.42, 0.018, 0.028), mat.brushedNickel);
         ridge.position.set(0, -0.618, r * 0.052);
         baseGroup.add(ridge);
       }
@@ -1542,7 +2317,7 @@
       }
 
       // Bottom Gold Land Grid Array (LGA) Contact Matrix + Central Capacitor Array
-      const lgaBottom = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.006, 1.18), mat.lgaGoldMatrix);
+      const lgaBottom = new THREE.Mesh(CAD.softBox(1.18, 0.006, 1.18), mat.lgaGoldMatrix);
       lgaBottom.position.set(0, -0.025, 0);
       lgaBottom.name = 'CPU_Bottom_LGA_Pads';
       pcbGroup.add(lgaBottom);
@@ -1558,7 +2333,7 @@
       dieGroup.add(dieMesh);
 
       for (let c = -4; c <= 4; c++) {
-        const smd = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.014, 0.012), mat.copperHeatpipe);
+        const smd = new THREE.Mesh(CAD.softBox(0.022, 0.014, 0.012), mat.copperHeatpipe);
         smd.position.set(c * 0.045, 0.03, 0.22);
         const smd2 = smd.clone();
         smd2.position.z = -0.22;
@@ -1609,6 +2384,17 @@
       topMesh.position.y = 0.082;
       ihsGroup.add(topMesh);
 
+      // Laser-etched model / batch marking and 2D data-matrix on the heat-spreader plateau
+      const ihsEtch = CAD.decal(0.64, 0.32, ProceduralTextures.getIHSEtch(), {
+        name: 'IHS_Laser_Etch',
+        roughness: 0.55,
+        metalness: 1,
+        color: 0x8f8a80
+      });
+      ihsEtch.rotation.x = -Math.PI / 2;
+      ihsEtch.position.set(0, 0.1268, 0.02);
+      ihsGroup.add(ihsEtch);
+
       // Small Thermal Pressure Equalization Vent Hole on Corner of IHS Flange
       const ventHole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.015, 16), mat.icEpoxyBlack);
       ventHole.position.set(-0.44, 0.062, 0.44);
@@ -1652,12 +2438,12 @@
       // Tinned Grounding Rings with Solder Star Pads around Mounting Holes
       holeCoords.forEach(([hx, hz]) => {
         const ring = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.048, 0.048, 0.038, 20, 1, true),
+          new THREE.CylinderGeometry(0.048, 0.048, 0.038, 40, 1, true),
           mat.silverAluminum
         );
         ring.position.set(hx, 0, hz);
         const flatRing = new THREE.Mesh(
-          new THREE.RingGeometry(0.026, 0.052, 20).rotateX(-Math.PI / 2),
+          new THREE.RingGeometry(0.026, 0.052, 40).rotateX(-Math.PI / 2),
           mat.silverAluminum
         );
         flatRing.position.set(hx, 0.02, hz);
@@ -1675,7 +2461,7 @@
       sockBase.position.set(-0.22, 0.035, -0.32);
       socketGroup.add(sockBase);
 
-      const goldPinBed = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.042, 0.35), mat.lgaGoldMatrix);
+      const goldPinBed = new THREE.Mesh(CAD.softBox(0.35, 0.042, 0.35), mat.lgaGoldMatrix);
       goldPinBed.position.set(-0.22, 0.036, -0.32);
       socketGroup.add(goldPinBed);
 
@@ -1721,9 +2507,9 @@
         dimmGroup.add(slotBody);
 
         // Center Slot Channel & Key Bridge
-        const groove = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.045, 0.94), mat.icEpoxyBlack);
+        const groove = new THREE.Mesh(CAD.softBox(0.018, 0.045, 0.94), mat.icEpoxyBlack);
         groove.position.set(sx, 0.076, -0.28);
-        const keyBridge = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.025), slotMat);
+        const keyBridge = new THREE.Mesh(CAD.softBox(0.05, 0.08, 0.025), slotMat);
         keyBridge.position.set(sx, 0.056, -0.22);
         dimmGroup.add(groove, keyBridge);
 
@@ -1746,7 +2532,7 @@
         const sGrp = new THREE.Group();
         sGrp.position.set(x, 0.052, z);
         const body = CAD.beveledBox(len, 0.068, 0.056, 0.004, 0.002, material, 'y');
-        const trench = new THREE.Mesh(new THREE.BoxGeometry(len - 0.03, 0.04, 0.018), mat.icEpoxyBlack);
+        const trench = new THREE.Mesh(CAD.softBox(len - 0.03, 0.04, 0.018), mat.icEpoxyBlack);
         trench.position.y = 0.02;
         sGrp.add(body, trench);
         if (hasTailLatch) {
@@ -1800,9 +2586,9 @@
       // Dual PS/2 Port Tower (Purple Keyboard + Green Mouse Mini-DIN)
       const ps2Tower = CAD.beveledBox(0.15, 0.27, 0.15, 0.006, 0.003, mat.brushedNickel, 'y');
       ps2Tower.position.set(-0.88, 0.15, -0.64);
-      const ps2Green = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 16).rotateZ(Math.PI / 2), mat.portGreenPS2);
+      const ps2Green = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 32).rotateZ(Math.PI / 2), mat.portGreenPS2);
       ps2Green.position.set(-0.955, 0.21, -0.64);
-      const ps2Purple = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 16).rotateZ(Math.PI / 2), mat.portPurplePS2);
+      const ps2Purple = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 32).rotateZ(Math.PI / 2), mat.portPurplePS2);
       ps2Purple.position.set(-0.955, 0.095, -0.64);
       ioAndVRM.add(ps2Tower, ps2Green, ps2Purple);
 
@@ -1818,7 +2604,7 @@
         const usbTower = CAD.beveledBox(0.19, 0.26, 0.18, 0.006, 0.003, mat.brushedNickel, 'y');
         usbTower.position.set(-0.86, 0.145, uz);
         for (let slot = 0; slot < 3; slot++) {
-          const usbPort = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.032, 0.11), mat.slotBlue);
+          const usbPort = new THREE.Mesh(CAD.softBox(0.03, 0.032, 0.11), mat.slotBlue);
           usbPort.position.set(-0.945, 0.07 + slot * 0.07, uz);
           ioAndVRM.add(usbPort);
         }
@@ -1830,7 +2616,7 @@
       audioTower.position.set(-0.86, 0.14, 0.42);
       ioAndVRM.add(audioTower);
       [mat.portMagenta, mat.portGreenPS2, mat.slotBlue].forEach((jMat, idx) => {
-        const jack = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 16).rotateZ(Math.PI / 2), jMat);
+        const jack = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 32).rotateZ(Math.PI / 2), jMat);
         jack.position.set(-0.945, 0.065 + idx * 0.072, 0.42);
         ioAndVRM.add(jack);
       });
@@ -1843,11 +2629,14 @@
       ioAndVRM.add(atx24, atx4);
 
       // CR2032 Silver Coin-Cell CMOS Battery in Holder
-      const cmosSocket = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.035, 24), mat.icEpoxyBlack);
+      const cmosSocket = new THREE.Mesh(CAD.roundedCylinderGeometry(0.095, 0.095, 0.035, 0.006, 56), mat.icEpoxyBlack);
       cmosSocket.position.set(0.52, 0.035, 0.64);
-      const cmosCell = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.038, 24), mat.chromeMetal);
+      const cmosCell = new THREE.Mesh(CAD.roundedCylinderGeometry(0.08, 0.08, 0.038, 0.007, 56), mat.silverAluminum);
       cmosCell.position.set(0.52, 0.042, 0.64);
-      ioAndVRM.add(cmosSocket, cmosCell);
+      const cellPrint = CAD.decal(0.13, 0.13, ProceduralTextures.getCoinCellTop(), { name: 'CR2032_Engraving', roughness: 0.5, metalness: 1 });
+      cellPrint.rotation.x = -Math.PI / 2;
+      cellPrint.position.set(0.52, 0.0613, 0.64);
+      ioAndVRM.add(cmosSocket, cmosCell, cellPrint);
 
       // 8 Blue & Black L-Keyed SATA Ports
       for (let s = 0; s < 8; s++) {
@@ -1858,19 +2647,21 @@
         ioAndVRM.add(sata);
       }
 
-      // Wound Copper Toroidal Chokes, Solid Capacitors & BGA Controller Chips
+      // VRM Toroidal Chokes: painted ferrite rings wound with enamelled copper magnet wire
       [[-0.58, -0.52], [-0.58, -0.32], [-0.58, -0.12], [-0.36, 0.04], [0.58, -0.65]].forEach(([cx, cz]) => {
-        const core = new THREE.Mesh(new THREE.TorusGeometry(0.044, 0.019, 14, 24), mat.copperHeatpipe);
-        core.position.set(cx, 0.062, cz);
-        ioAndVRM.add(core);
+        const choke = CAD.createToroidChoke(0.04, 0.017, 16, mat.ferriteCore, mat.enamelCopperWire);
+        choke.position.set(cx, 0.081, cz);
+        ioAndVRM.add(choke);
       });
 
+      // Radial Electrolytic Capacitors with PVC sleeves, polarity stripes & K-vent tops
       for (let c = 0; c < 26; c++) {
         const cx = -0.68 + (c % 7) * 0.21;
         const cz = -0.68 + Math.floor(c / 7) * 0.42;
         if (Math.abs(cx + 0.22) < 0.28 && Math.abs(cz + 0.32) < 0.28) continue;
-        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.078, 16), mat.chromeMetal);
+        const cap = CAD.createCapacitor(0.024, 0.078, mat.capSleeveNavy, mat.capTopAluminum, mat.icEpoxyBlack);
         cap.position.set(cx, 0.055, cz);
+        cap.rotation.y = (c * 1.7) % (Math.PI * 2);
         ioAndVRM.add(cap);
       }
 
@@ -1931,7 +2722,7 @@
       // 6B. Individual Gold Edge Contact Fingers along Bottom Connector Edge
       const fingersGroup = new THREE.Group();
       fingersGroup.name = `${namePrefix}_Gold_Edge_Fingers`;
-      const fingerGeo = new THREE.BoxGeometry(0.011, 0.052, 0.027);
+      const fingerGeo = CAD.softBox(0.011, 0.052, 0.027);
       for (let f = -48; f <= 48; f++) {
         const fx = f * 0.0168;
         // Skip the key notch and outer margins
@@ -1948,14 +2739,21 @@
       chipsGroup.name = `${namePrefix}_DRAM_Chips_8x`;
       const chipX = [-0.69, -0.515, -0.34, -0.165, 0.185, 0.36, 0.535, 0.71];
 
-      chipX.forEach((cx) => {
+      chipX.forEach((cx, idx) => {
         const icBody = CAD.beveledBox(0.135, 0.21, 0.022, 0.005, 0.002, mat.icEpoxyBlack);
         icBody.position.set(cx, 0.032, 0.018);
         chipsGroup.add(icBody);
 
+        // Laser-etched part marking (the first two packages sit under the module label)
+        if (idx > 1) {
+          const marking = CAD.decal(0.12, 0.18, ProceduralTextures.getICMarking(), { name: 'DRAM_Laser_Marking', roughness: 0.7 });
+          marking.position.set(cx, 0.032, 0.0293);
+          chipsGroup.add(marking);
+        }
+
         // Tiny metallic IC pins along left/right edges of each DRAM package
         for (let p = -6; p <= 6; p++) {
-          const pinRow = new THREE.Mesh(new THREE.BoxGeometry(0.152, 0.006, 0.012), mat.chromeMetal);
+          const pinRow = new THREE.Mesh(CAD.softBox(0.152, 0.006, 0.012), mat.chromeMetal);
           pinRow.position.set(cx, 0.032 + p * 0.014, 0.013);
           chipsGroup.add(pinRow);
         }
@@ -1968,10 +2766,15 @@
 
       for (let r = -26; r <= 26; r++) {
         if (r >= -1 && r <= 2) continue;
-        const smd = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.022, 0.014), mat.goldContacts);
+        const smd = new THREE.Mesh(CAD.softBox(0.014, 0.022, 0.014), mat.goldContacts);
         smd.position.set(r * 0.03, -0.125, 0.015);
         chipsGroup.add(smd);
       }
+
+      // Printed capacity / timing label stuck across the first two DRAM packages
+      const moduleLabel = CAD.decal(0.3, 0.15, ProceduralTextures.getRAMLabel(), { name: 'DIMM_Spec_Label', roughness: 0.45 });
+      moduleLabel.position.set(-0.6025, 0.035, 0.0297);
+      chipsGroup.add(moduleLabel);
 
       stickGroup.add(chipsGroup);
       stickGroup.position.set(zOffset * 0.42, zOffset < 0 ? 0.08 : -0.05, zOffset);
@@ -2048,7 +2851,7 @@
       // Detailed Internal PSU Components (Yellow Main Transformer, Copper Toroids, Filter Caps & Heatsinks)
       const internals = new THREE.Group();
       internals.name = 'PSU_Internal_Transformers_And_Coils';
-      const darkInteriorFloor = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.02, 1.10), mat.greenPCB);
+      const darkInteriorFloor = new THREE.Mesh(CAD.softBox(1.18, 0.02, 1.10), mat.greenPCB);
       darkInteriorFloor.position.set(0, -0.32, 0);
       const yellowTransformer = CAD.beveledBox(0.32, 0.42, 0.32, 0.02, 0.008, mat.wireYellow);
       yellowTransformer.position.set(-0.08, -0.06, 0.28);
@@ -2056,11 +2859,15 @@
       copperCoil1.position.set(-0.36, -0.08, 0.34);
       const copperCoil2 = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.035, 14, 24), mat.copperHeatpipe);
       copperCoil2.position.set(0.18, -0.12, 0.32);
-      const internalHeatsink = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.48, 0.75), mat.silverAluminum);
+      const internalHeatsink = new THREE.Mesh(CAD.softBox(0.04, 0.48, 0.75), mat.silverAluminum);
       internalHeatsink.position.set(-0.22, -0.04, 0);
       internals.add(darkInteriorFloor, yellowTransformer, copperCoil1, copperCoil2, internalHeatsink);
 
-      chassisGroup.add(wallBottom, wallLeft, wallRight, wallBack, wallTop, rearFrame, honeycombPlate, internals);
+      const ratingLabel = CAD.decal(0.9, 0.527, ProceduralTextures.getPSULabel(), { name: 'PSU_Rating_Label', roughness: 0.4 });
+      ratingLabel.rotation.y = Math.PI / 2;
+      ratingLabel.position.set(0.6312, -0.01, -0.02);
+
+      chassisGroup.add(wallBottom, wallLeft, wallRight, wallBack, wallTop, rearFrame, honeycombPlate, internals, ratingLabel);
       setExplodeOffset(chassisGroup, 0, -0.22, 0);
       root.add(chassisGroup);
 
@@ -2117,13 +2924,13 @@
 
       const iecBezel = CAD.beveledBox(0.32, 0.22, 0.05, 0.025, 0.006, mat.matteBlackPlastic);
       iecBezel.position.set(0.36, 0.08, 0.59);
-      const iecCavity = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.14, 0.055), mat.icEpoxyBlack);
+      const iecCavity = new THREE.Mesh(CAD.softBox(0.20, 0.14, 0.055), mat.icEpoxyBlack);
       iecCavity.position.set(0.36, 0.08, 0.595);
       acSwitchGroup.add(iecBezel, iecCavity);
 
       // 3 Brass/Chrome IEC C14 Male Prongs
       [[-0.055, -0.02], [0, 0.028], [0.055, -0.02]].forEach(([px, py]) => {
-        const prong = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.038, 0.045), mat.chromeMetal);
+        const prong = new THREE.Mesh(CAD.softBox(0.014, 0.038, 0.045), mat.chromeMetal);
         prong.position.set(0.36 + px, 0.08 + py, 0.605);
         acSwitchGroup.add(prong);
       });
@@ -2206,7 +3013,7 @@
       [-0.572, 0.572].forEach((sx) => {
         [-0.58, 0.04, 0.58].forEach((sz) => {
           const boss = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.038, 0.038, 0.022, 20).rotateZ(Math.PI / 2),
+            new THREE.CylinderGeometry(0.038, 0.038, 0.022, 32).rotateZ(Math.PI / 2),
             mat.chromeMetal
           );
           boss.position.set(sx, -0.02, sz);
@@ -2290,15 +3097,12 @@
       const spindleCap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.025, 36), mat.brushedNickel);
       spindleCap.position.set(0, 0.158, -0.14);
 
-      const actuatorRing = new THREE.Mesh(
-        new THREE.TorusGeometry(0.125, 0.018, 16, 40).rotateX(Math.PI / 2),
-        mat.brushedNickel
-      );
-      actuatorRing.position.set(-0.05, 0.16, 0.36);
-      const actuatorCap = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.10, 0.025, 32), mat.brushedNickel);
-      actuatorCap.position.set(-0.05, 0.158, 0.36);
+      // Printed drive label covering the actuator end of the shield (as on production drives)
+      const driveLabel = CAD.decal(0.8, 0.5, ProceduralTextures.getHDDLabel(), { name: 'HDD_Drive_Label', roughness: 0.42 });
+      driveLabel.rotation.x = -Math.PI / 2;
+      driveLabel.position.set(0, 0.1696, 0.39);
 
-      coverGroup.add(spindleRing, spindleCap, actuatorRing, actuatorCap);
+      coverGroup.add(spindleRing, spindleCap, driveLabel);
 
       // 6 Perimeter Pan-Head Torx Screws
       [
@@ -2323,19 +3127,19 @@
       sataGroup.add(connBlock);
 
       // L-Shaped SATA Power & Data Tongues + Gold Jumper Pins
-      const sataPowerTongue = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.018, 0.06), mat.matteBlackPlastic);
+      const sataPowerTongue = new THREE.Mesh(CAD.softBox(0.28, 0.018, 0.06), mat.matteBlackPlastic);
       sataPowerTongue.position.set(-0.28, -0.035, 0.80);
-      const sataDataTongue = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.018, 0.06), mat.matteBlackPlastic);
+      const sataDataTongue = new THREE.Mesh(CAD.softBox(0.16, 0.018, 0.06), mat.matteBlackPlastic);
       sataDataTongue.position.set(-0.02, -0.035, 0.80);
       sataGroup.add(sataPowerTongue, sataDataTongue);
 
       // Recessed Jumper Cavity with 2x4 Gold Pins
-      const jumperCavity = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.065, 0.05), mat.chassisBlackSteel);
+      const jumperCavity = new THREE.Mesh(CAD.softBox(0.24, 0.065, 0.05), mat.chassisBlackSteel);
       jumperCavity.position.set(0.28, -0.035, 0.80);
       sataGroup.add(jumperCavity);
 
       for (let p = 0; p < 5; p++) {
-        const pinTop = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.055), mat.goldContacts);
+        const pinTop = new THREE.Mesh(CAD.softBox(0.014, 0.014, 0.055), mat.goldContacts);
         pinTop.position.set(0.19 + p * 0.042, -0.022, 0.805);
         const pinBot = pinTop.clone();
         pinBot.position.y = -0.048;
@@ -2397,7 +3201,7 @@
           holeBot.position.y = -0.10;
           chassisGroup.add(holeTop, holeBot);
         });
-        const snapTab = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.12, 0.06), mat.icEpoxyBlack);
+        const snapTab = new THREE.Mesh(CAD.softBox(0.018, 0.12, 0.06), mat.icEpoxyBlack);
         snapTab.position.set(sx, -0.02, 0.68);
         chassisGroup.add(snapTab);
       });
@@ -2415,7 +3219,7 @@
       bezelGroup.add(bezelFrame);
 
       // Recessed Tray Cutout Border
-      const trayRecess = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.175, 0.03), mat.icEpoxyBlack);
+      const trayRecess = new THREE.Mesh(CAD.softBox(1.35, 0.175, 0.03), mat.icEpoxyBlack);
       trayRecess.position.set(0, 0.055, 0.892);
       bezelGroup.add(trayRecess);
 
@@ -2446,7 +3250,9 @@
 
       const trayFrontDoor = CAD.beveledBox(1.32, 0.155, 0.035, 0.006, 0.003, mat.matteBlackPlastic);
       trayFrontDoor.position.set(0, 0.055, 0.902);
-      trayGroup.add(trayFrontDoor);
+      const doorPrint = CAD.decal(0.36, 0.09, ProceduralTextures.getDVDBezelPrint(), { name: 'DVD_Tray_Logo_Print', roughness: 0.4 });
+      doorPrint.position.set(-0.4, 0.055, 0.9203);
+      trayGroup.add(trayFrontDoor, doorPrint);
 
       // Molded Disc Platter Bed with Circular 120mm Optical Disc Well
       const trayBed = CAD.beveledBox(1.24, 0.032, 1.32, 0.01, 0.003, mat.matteBlackPlastic, 'y');
@@ -2593,6 +3399,9 @@
     // 5. THREE.JS SCENE, STUDIO LIGHTING & CLASSROOM CALLOUT PROJECTOR
     // ============================================================================
     let scene, camera, renderer, controls, raycaster, mouse, gridHelper;
+    let keyLight, shadowFloor;
+    const studioEnvironments = {};
+    const KEY_LIGHT_DIR = new THREE.Vector3(0.62, 0.95, 0.75).normalize();
     let currentModelGroup = null;
     let activeAssetIndex = 0;
     let isGridView = false;
@@ -2605,6 +3414,88 @@
     let explodeFactor = 0;
     let activeCalloutEls = [];
     let clock = new THREE.Clock();
+
+    // HDR product-photography light rig baked into a PMREM environment: emissive softboxes at real
+    // intensities around a dark studio (or a white cyclorama), so metals and gloss pick up crisp,
+    // graduated reflections instead of a flat grey wash
+    function buildStudioEnvironment(pmremGenerator, white) {
+      const envScene = new THREE.Scene();
+      const room = new THREE.SphereGeometry(20, 48, 24);
+      const roomColors = [];
+      const floor = white ? srgb(0xd9dce1) : srgb(0x0c0e12);
+      const horizon = white ? srgb(0xf2f4f7) : srgb(0x2a3140);
+      const ceiling = white ? srgb(0xe4e7ec) : srgb(0x10131a);
+      const tmp = new THREE.Color();
+      const roomPos = room.attributes.position;
+      for (let i = 0; i < roomPos.count; i++) {
+        const t = roomPos.getY(i) / 20;
+        if (t < 0) tmp.copy(horizon).lerp(floor, Math.min(1, -t * 3));
+        else tmp.copy(horizon).lerp(ceiling, Math.min(1, t * 1.6));
+        roomColors.push(tmp.r, tmp.g, tmp.b);
+      }
+      room.setAttribute('color', new THREE.Float32BufferAttribute(roomColors, 3));
+      envScene.add(new THREE.Mesh(room, new THREE.MeshBasicMaterial({ side: THREE.BackSide, vertexColors: true })));
+
+      const softbox = (w, h, x, y, z, intensity, tint = 0xffffff) => {
+        const panel = new THREE.Mesh(
+          new THREE.PlaneGeometry(w, h),
+          new THREE.MeshBasicMaterial({ color: srgb(tint).multiplyScalar(intensity), side: THREE.DoubleSide })
+        );
+        panel.position.set(x, y, z);
+        panel.lookAt(0, 0, 0);
+        envScene.add(panel);
+      };
+      softbox(10, 10, 0, 13, 1, white ? 3 : 4.5); // overhead scrim
+      softbox(16, 7, -7, 8, -10, white ? 2.2 : 2.6); // high rear scrim reflected by flat tops
+      softbox(3.2, 11, 11, 4, 8, 12); // key strip, front right
+      softbox(2.6, 11, -12, 3.5, -5, 7, 0xdce8ff); // cool rim strip, rear left
+      softbox(9, 3.5, -6, 1, 11, white ? 2.5 : 1.4); // low front-left fill card
+      softbox(6, 2, 0, -6, 6, white ? 1.2 : 0.35); // floor bounce
+
+      const tex = pmremGenerator.fromScene(envScene, 0.02).texture;
+      envScene.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+      return tex;
+    }
+
+    // Aim the key light's shadow frustum and drop the contact-shadow floor to the model's footprint
+    function fitStudioToModel(object) {
+      object.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(object);
+      if (box.isEmpty()) return;
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      const r = Math.max(sphere.radius, 0.5);
+      keyLight.target.position.copy(sphere.center);
+      keyLight.position.copy(sphere.center).addScaledVector(KEY_LIGHT_DIR, r * 4);
+      const cam = keyLight.shadow.camera;
+      cam.left = -r * 1.1;
+      cam.right = r * 1.1;
+      cam.top = r * 1.1;
+      cam.bottom = -r * 1.1;
+      cam.near = r * 2;
+      cam.far = r * 6.5;
+      cam.updateProjectionMatrix();
+      keyLight.shadow.normalBias = r * 0.006;
+      shadowFloor.position.y = box.min.y - 0.002;
+      gridHelper.position.y = box.min.y - 0.004;
+    }
+
+    function prepareModelForStudio(object) {
+      object.traverse((node) => {
+        if (!node.isMesh) return;
+        node.castShadow = !node.userData.decal;
+        node.receiveShadow = true;
+      });
+      fitStudioToModel(object);
+    }
+
+    function applyStudioBackdrop() {
+      scene.environment = studioEnvironments[lightBackdropEnabled ? 'white' : 'dark'];
+      shadowFloor.material.opacity = lightBackdropEnabled ? 0.3 : 0.55;
+      if (gridHelper) gridHelper.visible = !lightBackdropEnabled;
+    }
 
     function initThreeViewport() {
       const container = document.getElementById('viewport-container');
@@ -2619,51 +3510,38 @@
       renderer.physicallyCorrectLights = true;
       renderer.outputEncoding = THREE.sRGBEncoding;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.25;
+      renderer.toneMappingExposure = 1.0;
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       container.appendChild(renderer.domElement);
 
-      // High-Contrast Studio Softbox Environment Map for Crisp Specular Chamfer Highlights
+      // Image-based lighting does most of the work; one key light adds direct sun-like modelling + shadows
       const pmremGenerator = new THREE.PMREMGenerator(renderer);
       pmremGenerator.compileCubemapShader();
-      const envScene = new THREE.Scene();
-      envScene.background = new THREE.Color(0x1e2636);
+      studioEnvironments.dark = buildStudioEnvironment(pmremGenerator, false);
+      studioEnvironments.white = buildStudioEnvironment(pmremGenerator, true);
+      pmremGenerator.dispose();
 
-      const addSoftbox = (w, h, d, x, y, z, col) => {
-        const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color: col }));
-        box.position.set(x, y, z);
-        envScene.add(box);
-      };
-      addSoftbox(10, 0.4, 10, 0, 7, 2, 0xffffff);
-      addSoftbox(0.4, 8, 8, -7, 3, 4, 0xbae6fd);
-      addSoftbox(0.4, 8, 8, 7, 3, -3, 0xfef3c7);
-      addSoftbox(8, 6, 0.4, 0, 2, 8, 0xe2e8f0);
-
-      scene.environment = pmremGenerator.fromScene(envScene, 0.035).texture;
-
-      // Multi-Point Classroom Studio Lighting
-      const ambientLight = new THREE.AmbientLight(0xe2e8f0, 0.95);
-      scene.add(ambientLight);
-
-      const keyLight = new THREE.DirectionalLight(0xffffff, 3.4);
-      keyLight.position.set(4.5, 6.5, 5.5);
+      keyLight = new THREE.DirectionalLight(0xfff6ec, 2.2);
       keyLight.castShadow = true;
       keyLight.shadow.mapSize.width = 2048;
       keyLight.shadow.mapSize.height = 2048;
-      scene.add(keyLight);
+      keyLight.shadow.bias = -0.0004;
+      scene.add(keyLight, keyLight.target);
 
-      const fillLight = new THREE.DirectionalLight(0x93c5fd, 1.8);
-      fillLight.position.set(-5.5, 3.5, 3.0);
-      scene.add(fillLight);
-
-      const rimLight = new THREE.DirectionalLight(0xfde68a, 2.1);
-      rimLight.position.set(1.5, -4.0, -5.5);
-      scene.add(rimLight);
+      // Invisible floor that only receives the model's soft contact shadow
+      shadowFloor = new THREE.Mesh(
+        new THREE.PlaneGeometry(60, 60).rotateX(-Math.PI / 2),
+        new THREE.ShadowMaterial({ opacity: 0.55 })
+      );
+      shadowFloor.receiveShadow = true;
+      scene.add(shadowFloor);
 
       gridHelper = new THREE.GridHelper(10, 40, 0x334155, 0x1e293b);
-      gridHelper.position.y = -1.02;
+      gridHelper.material.transparent = true;
+      gridHelper.material.opacity = 0.55;
       scene.add(gridHelper);
+      applyStudioBackdrop();
 
       controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
@@ -2784,6 +3662,7 @@
       const item = HARDWARE_REGISTRY[index];
       currentModelGroup = item.builder();
       scene.add(currentModelGroup);
+      prepareModelForStudio(currentModelGroup);
 
       explodeFactor = 0;
       document.getElementById('slider-explode').value = 0;
@@ -2823,6 +3702,7 @@
       });
 
       scene.add(currentModelGroup);
+      prepareModelForStudio(currentModelGroup);
       camera.position.set(0, 4.6, 5.8);
       controls.target.set(0, 0, 0);
       controls.update();
@@ -2932,7 +3812,7 @@
       if (mesh.material) {
         const mat = mesh.material;
         if (mat.color) {
-          const hex = '#' + mat.color.getHexString();
+          const hex = '#' + mat.color.clone().convertLinearToSRGB().getHexString();
           document.getElementById('input-mat-color').value = hex;
           document.getElementById('mat-color-hex').textContent = hex;
         }
@@ -2944,6 +3824,9 @@
           document.getElementById('slider-mat-roughness').value = Math.round(mat.roughness * 100);
           document.getElementById('val-mat-roughness').textContent = mat.roughness.toFixed(2);
         }
+        const relief = mat.normalScale ? mat.normalScale.x : 1;
+        document.getElementById('slider-mat-bump').value = Math.round(relief * 100);
+        document.getElementById('val-mat-bump').textContent = relief.toFixed(2);
       }
     }
 
@@ -2978,9 +3861,26 @@
       }, duration);
     }
 
+    // GLTFExporter r128 has no clearcoat writer, so emit KHR_materials_clearcoat ourselves to keep the
+    // glossy solder-mask lacquer over the PCB artwork in exported files
+    function ClearcoatExportPlugin(writer) {
+      return {
+        writeMaterial(material, materialDef) {
+          if (!material.isMeshPhysicalMaterial || !material.clearcoat) return;
+          materialDef.extensions = materialDef.extensions || {};
+          materialDef.extensions.KHR_materials_clearcoat = {
+            clearcoatFactor: material.clearcoat,
+            clearcoatRoughnessFactor: material.clearcoatRoughness
+          };
+          writer.extensionsUsed.KHR_materials_clearcoat = true;
+        }
+      };
+    }
+
     function exportObjectToGLB(object3D, filename, binary = true) {
       return new Promise((resolve) => {
         const exporter = new THREE.GLTFExporter();
+        exporter.register(ClearcoatExportPlugin);
         // Temporarily ensure wireframe is off during export so exported PBR material is solid
         const prevWire = wireframeEnabled;
         if (prevWire) applyWireframeState(object3D, false);
@@ -3131,7 +4031,7 @@
         document.getElementById('backdrop-label').textContent = lightBackdropEnabled
           ? 'Dark CAD Studio'
           : 'White Photo Studio';
-        if (gridHelper) gridHelper.visible = !lightBackdropEnabled;
+        applyStudioBackdrop();
       });
 
       // Animate Toggle
@@ -3178,7 +4078,7 @@
       // Live PBR Material Editor Controls
       document.getElementById('input-mat-color').addEventListener('input', (e) => {
         if (selectedMesh && selectedMesh.material && selectedMesh.material.color) {
-          selectedMesh.material.color.set(e.target.value);
+          selectedMesh.material.color.set(e.target.value).convertSRGBToLinear();
           document.getElementById('mat-color-hex').textContent = e.target.value;
         }
       });
@@ -3202,8 +4102,8 @@
       document.getElementById('slider-mat-bump').addEventListener('input', (e) => {
         const val = parseInt(e.target.value, 10) / 100;
         document.getElementById('val-mat-bump').textContent = val.toFixed(2);
-        if (selectedMesh && selectedMesh.material) {
-          selectedMesh.material.bumpScale = val * 0.0015;
+        if (selectedMesh && selectedMesh.material && selectedMesh.material.normalScale) {
+          selectedMesh.material.normalScale.set(val, val);
         }
       });
 
