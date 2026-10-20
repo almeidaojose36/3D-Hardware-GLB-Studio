@@ -48,14 +48,18 @@ Run:
 node tools/build-model.mjs models/<Name>/model.js
 ```
 
-It prints build statistics, warnings and console output, and writes `models/<Name>/<Name>.glb` and
-the studio views in `models/<Name>/views/`. If the build fails, the error names the line: fix it and
-run again.
+It prints build statistics, warnings and console output, and writes `models/<Name>/<Name>.glb` (named
+after the folder; `--name` overrides it) and the studio views in `models/<Name>/views/`: five angles
+plus an exploded view with every offset applied. If the build fails, the error names the line: fix it
+and run again. Useful options:
 
-After a successful build, read `models/<Name>/views/sheet.jpg` (all five views on one sheet; open the
+- `--size 1024` renders the views at 1024 px, for objects with small printed or connector detail;
+- `--bottom` adds a view of the underside (feet, screws, labels, oil pans).
+
+After a successful build, read `models/<Name>/views/sheet.jpg` (all views on one sheet; open the
 individual view images when you need more detail) and compare it with the photos as the guide's
-"Reviewing a version" section describes. Write down the most important differences, fix them in
-`model.js`, rebuild and look again.
+"Reviewing a version" section describes, including the exploded view. Write down the most important
+differences, fix them in `model.js`, rebuild and look again.
 
 Stop when the model matches the photos well, or after about four review rounds unless the user asked
 for more. Say what still differs rather than iterating on changes the renders cannot show.

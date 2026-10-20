@@ -798,6 +798,51 @@
         return this.cache.powder;
       },
 
+      // 1E. As-cast metal (engine blocks, cylinder heads, gearbox and pump housings): sand grain with
+      //     casting pits and blotchy roughness. `fine` gives a bead-blasted / anodised finish instead.
+      getCastSurface(fine = false) {
+        const key = fine ? 'beadBlast' : 'cast';
+        if (this.cache[key]) return this.cache[key];
+        const S = 512;
+        const rnd = seededRandom(fine ? 41 : 37);
+        const height = this.fbm(S, fine ? 160 : 64, fine ? 2 : 4, rnd, 0.55);
+        if (!fine) {
+          for (let i = 0; i < 2500; i++) {
+            const x = Math.floor(rnd() * S);
+            const y = Math.floor(rnd() * S);
+            const v = 0.1 + rnd() * 0.2;
+            for (let k = 0; k < 4; k++) height[((y + (k >> 1)) % S) * S + ((x + (k & 1)) % S)] -= v;
+          }
+        }
+        const blotch = this.fbm(S, 5, 3, rnd);
+        const rough = new Float32Array(S * S);
+        for (let i = 0; i < rough.length; i++) rough[i] = fine ? 0.92 + 0.08 * blotch[i] : 0.82 + 0.18 * blotch[i];
+        const repeat = fine ? [4, 4] : [3, 3];
+        this.cache[key] = {
+          normalMap: this.toTexture(this.normalCanvas(this.blur(height, S, S, 1), S, S, fine ? 0.35 : 0.5), { repeat }),
+          ormMap: this.toTexture(this.ormCanvas(S, S, rough), { repeat })
+        };
+        return this.cache[key];
+      },
+
+      // 1F. Wrinkle-finish paint (valve covers, instrument and amplifier cases): crinkled ridges
+      getWrinklePaint() {
+        if (this.cache.wrinkle) return this.cache.wrinkle;
+        const S = 512;
+        const rnd = seededRandom(43);
+        const noise = this.fbm(S, 40, 3, rnd, 0.6);
+        const height = new Float32Array(S * S);
+        for (let i = 0; i < height.length; i++) height[i] = 1 - Math.abs(noise[i] * 2 - 1);
+        const wear = this.fbm(S, 4, 3, rnd);
+        const rough = new Float32Array(S * S);
+        for (let i = 0; i < rough.length; i++) rough[i] = 0.85 + 0.15 * wear[i];
+        this.cache.wrinkle = {
+          normalMap: this.toTexture(this.normalCanvas(this.blur(height, S, S, 1), S, S, 0.8), { repeat: [4, 4] }),
+          ormMap: this.toTexture(this.ormCanvas(S, S, rough), { repeat: [4, 4] })
+        };
+        return this.cache.wrinkle;
+      },
+
       // 1E. Green solder-mask PCB: copper pours & traces under the mask, exposed tin/gold pads, vias,
       // white silkscreen with reference designators. Every feature is painted into colour, height and
       // roughness/metal layers together so the relief and metallic pads line up with the artwork.
@@ -1503,6 +1548,138 @@
         return shape;
       },
 
+      // Stadium / slot outline with fully rounded ends (USB-C shells, oblong holes, pill buttons); also
+      // usable as a hole path. roundedRectShape keeps short flat ends, so it cannot make this shape.
+      slotShape(w, h, cx = 0, cy = 0) {
+        const shape = new THREE.Shape();
+        const r = Math.min(w, h) / 2;
+        const half = Math.abs(w - h) / 2;
+        if (half < 1e-9) {
+          shape.absarc(cx, cy, r, 0, Math.PI * 2, false);
+        } else if (w > h) {
+          shape.moveTo(cx - half, cy - r);
+          shape.lineTo(cx + half, cy - r);
+          shape.absarc(cx + half, cy, r, -Math.PI / 2, Math.PI / 2, false);
+          shape.lineTo(cx - half, cy + r);
+          shape.absarc(cx - half, cy, r, Math.PI / 2, Math.PI * 1.5, false);
+        } else {
+          shape.moveTo(cx + r, cy - half);
+          shape.lineTo(cx + r, cy + half);
+          shape.absarc(cx, cy + half, r, 0, Math.PI, false);
+          shape.lineTo(cx - r, cy - half);
+          shape.absarc(cx, cy - half, r, Math.PI, Math.PI * 2, false);
+        }
+        return shape;
+      },
+
+      // Smooth shell lofted through rounded-rectangle sections (keycaps, buttons, knobs, tapered housings,
+      // bezels). Each section is { w, d, r, y, x = 0, z = 0 }: a w x d rounded rectangle in the XZ plane at
+      // height y centred on (x, z), listed bottom to top. The top is capped flat; the bottom when capBottom.
+      loftRoundedRect(sections, { cornerSegments = 6, capTop = true, capBottom = false } = {}) {
+        const rings = sections.map((s) => {
+          const r = Math.max(1e-5, Math.min(s.r, (s.w / 2) * 0.999, (s.d / 2) * 0.999));
+          const hw = s.w / 2 - r;
+          const hd = s.d / 2 - r;
+          const cx = s.x || 0;
+          const cz = s.z || 0;
+          const pts = [];
+          [[hw, hd], [-hw, hd], [-hw, -hd], [hw, -hd]].forEach(([ox, oz], c) => {
+            for (let k = 0; k <= cornerSegments; k++) {
+              const a = ((c + k / cornerSegments) * Math.PI) / 2;
+              pts.push(new THREE.Vector3(cx + ox + Math.cos(a) * r, s.y, cz + oz + Math.sin(a) * r));
+            }
+          });
+          return pts;
+        });
+        const n = rings[0].length;
+        const pos = [];
+        const uv = [];
+        const tri = (a, b, c, ua, ub, uc) => {
+          pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+          uv.push(...ua, ...ub, ...uc);
+        };
+        for (let i = 0; i < rings.length - 1; i++) {
+          const v0 = i / (rings.length - 1);
+          const v1 = (i + 1) / (rings.length - 1);
+          for (let j = 0; j < n; j++) {
+            const k = (j + 1) % n;
+            const u0 = j / n;
+            const u1 = (j + 1) / n;
+            const [a, b, c, d] = [rings[i][j], rings[i][k], rings[i + 1][j], rings[i + 1][k]];
+            tri(a, c, b, [u0, v0], [u0, v1], [u1, v0]);
+            tri(b, c, d, [u1, v0], [u0, v1], [u1, v1]);
+          }
+        }
+        const cap = (ring, up) => {
+          const centre = ring.reduce((acc, p) => acc.add(p), new THREE.Vector3()).divideScalar(ring.length);
+          const box = new THREE.Box3().setFromPoints(ring);
+          const size = box.getSize(new THREE.Vector3());
+          const capUV = (p) => [(p.x - box.min.x) / (size.x || 1), 1 - (p.z - box.min.z) / (size.z || 1)];
+          for (let j = 0; j < n; j++) {
+            const a = ring[j];
+            const b = ring[(j + 1) % n];
+            if (up) tri(centre, b, a, capUV(centre), capUV(b), capUV(a));
+            else tri(centre, a, b, capUV(centre), capUV(a), capUV(b));
+          }
+        };
+        if (capTop) cap(rings[rings.length - 1], true);
+        if (capBottom) cap(rings[0], false);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+        return this.weld(this.creaseNormals(geo, 40));
+      },
+
+      // Combine geometries that share one material into a single geometry, so hundreds of small repeated
+      // parts become one mesh. Move each into place first (translate / rotateX / applyMatrix4 on a clone).
+      // Keeps position, normal and (when every input has it) uv.
+      merge(geometries) {
+        const list = geometries.filter(Boolean);
+        const withUV = list.every((g) => g.attributes.uv);
+        let vertexCount = 0;
+        let indexCount = 0;
+        list.forEach((g) => {
+          vertexCount += g.attributes.position.count;
+          indexCount += g.index ? g.index.count : g.attributes.position.count;
+        });
+        const position = new Float32Array(vertexCount * 3);
+        const normal = new Float32Array(vertexCount * 3);
+        const uv = withUV ? new Float32Array(vertexCount * 2) : null;
+        const index = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
+        let v = 0;
+        let k = 0;
+        list.forEach((g) => {
+          if (!g.attributes.normal) g.computeVertexNormals();
+          const p = g.attributes.position;
+          const nrm = g.attributes.normal;
+          for (let i = 0; i < p.count; i++) {
+            position.set([p.getX(i), p.getY(i), p.getZ(i)], (v + i) * 3);
+            normal.set([nrm.getX(i), nrm.getY(i), nrm.getZ(i)], (v + i) * 3);
+            if (uv) uv.set([g.attributes.uv.getX(i), g.attributes.uv.getY(i)], (v + i) * 2);
+          }
+          if (g.index) for (let i = 0; i < g.index.count; i++) index[k++] = g.index.getX(i) + v;
+          else for (let i = 0; i < p.count; i++) index[k++] = i + v;
+          v += p.count;
+        });
+        const out = new THREE.BufferGeometry();
+        out.setAttribute('position', new THREE.BufferAttribute(position, 3));
+        out.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+        if (uv) out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+        out.setIndex(new THREE.BufferAttribute(index, 1));
+        return out;
+      },
+
+      // Tile surface maps across a large part. Extruded and rounded-box UVs span 0..1 over the whole part,
+      // so without this one texture tile stretches over it. Scales in place: pass a geometry you own, not
+      // a shared one (CAD.shared, beveledBox) unless every user of it should change.
+      scaleUVs(geometry, su, sv = su) {
+        const uv = geometry.attributes.uv;
+        if (!uv) return geometry;
+        for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv);
+        uv.needsUpdate = true;
+        return geometry;
+      },
+
       // Flat facets for prismatic parts (hex standoffs, knurled heads) that should not shade round
       faceted(geometry, creaseAngleDeg = 30) {
         return this.weld(this.creaseNormals(geometry, creaseAngleDeg));
@@ -1595,8 +1772,9 @@
         return new THREE.LatheGeometry(pts, radialSegments);
       },
 
-      // Thin printed decal (label, etch, print) floating 0.1 mm above a surface. Its artwork carries
-      // alpha in the base-colour map so it exports as an alpha-blended glTF material.
+      // Thin printed decal (label, etch, print): a plane facing +Z at the origin, which the caller rotates
+      // onto a surface and lifts about 0.0005 units off it. Its artwork carries alpha in the base-colour
+      // map so it exports as an alpha-blended glTF material.
       decal(w, h, texture, { name = 'Printed_Decal', roughness = 0.55, metalness = 0, color = 0xffffff } = {}) {
         const mat = new THREE.MeshStandardMaterial({
           name,
@@ -2216,6 +2394,9 @@
       const pcb = T.getPCB();
       const honeycomb = T.getHoneycombGrille();
       const lga = T.getLGAPadArray();
+      const cast = T.getCastSurface();
+      const beadBlast = T.getCastSurface(true);
+      const wrinkle = T.getWrinklePaint();
 
       const surface = (set, scale) => ({
         normalMap: set.normalMap,
@@ -2319,7 +2500,14 @@
         toolGrey: molded('Toolless_Grey_Plastic', 0x4a4d52, 0.55),
         wireWhite: molded('PVC_Wire_White', 0xe6e6e1, 0.36),
         wireGreen: molded('PVC_Wire_Green', 0x1f9d4c, 0.36),
-        wireBlue: molded('PVC_Wire_Blue', 0x2457c5, 0.36)
+        wireBlue: molded('PVC_Wire_Blue', 0x2457c5, 0.36),
+        // Engine and machine surfaces. Rough as-cast and blasted metals scatter the studio light, so their
+        // base colours sit well below polished reflectance values; brighter ones read as white plaster.
+        castAluminum: new THREE.MeshStandardMaterial({ name: 'SandCast_Aluminum', color: srgb(0x8f918e), roughness: 0.62, metalness: 1, ...surface(cast, 0.7) }),
+        castIron: new THREE.MeshStandardMaterial({ name: 'Cast_Iron', color: srgb(0x55585a), roughness: 0.72, metalness: 1, ...surface(cast, 0.85) }),
+        anodizedBlack: new THREE.MeshStandardMaterial({ name: 'BeadBlasted_Anodized_Black', color: srgb(0x2c2d30), roughness: 0.42, metalness: 1, ...surface(beadBlast, 0.5) }),
+        anodizedSilver: new THREE.MeshStandardMaterial({ name: 'BeadBlasted_Anodized_Silver', color: srgb(0xaeb1b4), roughness: 0.45, metalness: 1, ...surface(beadBlast, 0.5) }),
+        wrinkleBlackPaint: new THREE.MeshStandardMaterial({ name: 'Wrinkle_Finish_Black_Paint', color: srgb(0x1f2022), roughness: 0.66, metalness: 0, ...surface(wrinkle, 0.9) })
       };
     }
 
@@ -6167,10 +6355,30 @@
         const centre = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
         const parts = root.children.slice(0, 30).map((child) => {
           let count = 0;
-          child.traverse((n) => n.isMesh && count++);
+          let nestedExplode = 0;
+          child.traverse((n) => {
+            if (n.isMesh) count++;
+            if (n !== child && n.userData && n.userData.explodeVec) nestedExplode++;
+          });
           const v = child.userData.explodeVec;
-          return { name: child.name || '(unnamed)', meshes: count, explode: v ? [round(v.x), round(v.y), round(v.z)] : null };
+          return { name: child.name || '(unnamed)', meshes: count, explode: v ? [round(v.x), round(v.y), round(v.z)] : null, nestedExplode };
         });
+
+        // Meshes whose bounds touch no other mesh are probably floating (a gap the renders may not show)
+        const floating = [];
+        const boxes = [];
+        root.traverse((node) => {
+          if (node.isMesh && node.geometry && node.geometry.attributes.position && node.geometry.attributes.position.count) {
+            boxes.push({ name: node.name || '(unnamed mesh)', box: new THREE.Box3().setFromObject(node) });
+          }
+        });
+        if (boxes.length > 1 && boxes.length <= 4000) {
+          const gap = Math.max(size.x, size.y, size.z) * 0.004;
+          boxes.forEach((b) => b.box.expandByScalar(gap));
+          boxes.forEach((b, i) => {
+            if (!boxes.some((other, j) => j !== i && other.box.intersectsBox(b.box))) floating.push(b.name);
+          });
+        }
 
         const warnings = [];
         const largest = Math.max(size.x, size.y, size.z);
@@ -6183,6 +6391,7 @@
         if (meshes > 4000) warnings.push(`${meshes} meshes is a lot for one model: group repeated details or merge tiny parts`);
         if (root.children.length > 1 && explodeParts === 0) warnings.push('no part has an exploded-view offset (setExplodeOffset)');
         if (parts.some((p) => p.name === '(unnamed)')) warnings.push('some top-level parts have no name');
+        if (floating.length) warnings.push(`${floating.length} mesh(es) touch no other part, so they may be floating: ${floating.slice(0, 8).join(', ')}${floating.length > 8 ? ', …' : ''}`);
         return {
           meshes,
           triangles,
@@ -6345,20 +6554,48 @@
       }
     };
 
-    // Fixed studio angles shown to Claude after every version. Directions point from the model to the
-    // camera: +Z is the object's front, +X its right side, +Y up.
+    // Fixed studio views shown to Claude after every version. Directions point from the model to the
+    // camera: +Z is the object's front, +X its right side, +Y up. The last view applies every explode
+    // offset at full strength, like the studio's exploded-view slider at 100%.
     const BUILD_VIEWS = [
       { key: 'front-right', label: 'front-right three-quarter view, from above', dir: [1, 0.62, 1.25] },
       { key: 'front', label: 'front view (looking at the +Z face)', dir: [0, 0.06, 1] },
       { key: 'right', label: 'right side view (looking at the +X face)', dir: [1, 0.06, 0] },
-      { key: 'top', label: 'top view (looking down at the +Y face, front at the bottom)', dir: [0, 1, 0] },
-      { key: 'rear-left', label: 'rear-left three-quarter view, from above', dir: [-1, 0.55, -1.2] }
+      { key: 'top', label: 'top view (looking down at the +Y face, front at the bottom)', dir: [0, 1, 0], up: [0, 0, -1] },
+      { key: 'rear-left', label: 'rear-left three-quarter view, from above', dir: [-1, 0.55, -1.2] },
+      { key: 'exploded', label: 'exploded view, front-right (every explode offset at 100%)', dir: [1, 0.62, 1.25], exploded: true }
     ];
+    const BOTTOM_VIEW = { key: 'bottom', label: 'bottom view (looking up at the -Y face, front at the top)', dir: [0, -1, 0], up: [0, 0, 1] };
 
-    // Render a model on its own in the bright photo studio from each BUILD_VIEWS angle, synchronously, then
-    // put the viewport back exactly as it was (the user never sees the swap)
-    function captureModelViews(object, size = 640) {
+    // Camera distance at which all eight corners of `box` fit the square frame when looking at `centre`
+    // from direction `dir`: tighter than the bounding sphere, so long or flat objects fill the view
+    function frameDistance(box, centre, dir, up, fovDeg, margin = 0.9) {
+      const forward = dir.clone().negate();
+      const right = new THREE.Vector3().crossVectors(forward, up).normalize();
+      const camUp = new THREE.Vector3().crossVectors(right, forward).normalize();
+      const tan = Math.tan(THREE.MathUtils.degToRad(fovDeg / 2)) * margin;
+      const size = box.getSize(new THREE.Vector3()).length();
+      const q = new THREE.Vector3();
+      let distance = 0;
+      [box.min.x, box.max.x].forEach((x) =>
+        [box.min.y, box.max.y].forEach((y) =>
+          [box.min.z, box.max.z].forEach((z) => {
+            q.set(x, y, z).sub(centre);
+            const depth = q.dot(forward);
+            distance = Math.max(distance, Math.abs(q.dot(right)) / tan - depth, Math.abs(q.dot(camUp)) / tan - depth, size * 0.05 - depth);
+          })
+        )
+      );
+      return distance;
+    }
+
+    // Render a model on its own in the bright photo studio from each view, synchronously, then put the
+    // viewport back exactly as it was (the user never sees the swap). A longer lens than the viewport's
+    // keeps perspective close to a product photo while the model still fills the frame.
+    function captureModelViews(object, size = 640, { bottom = false } = {}) {
+      const views = bottom ? [...BUILD_VIEWS, BOTTOM_VIEW] : BUILD_VIEWS;
       const saved = {
+        fov: camera.fov,
         modelVisible: currentModelGroup ? currentModelGroup.visible : false,
         background: scene.background,
         environment: scene.environment,
@@ -6369,6 +6606,15 @@
         aspect: camera.aspect,
         pixelRatio: renderer.getPixelRatio(),
         size: renderer.getSize(new THREE.Vector2())
+      };
+      const exploding = [];
+      object.traverse((node) => {
+        if (node.userData.basePos && node.userData.explodeVec) exploding.push(node);
+      });
+      const setExploded = (on) => {
+        exploding.forEach((node) => node.position.copy(node.userData.basePos).addScaledVector(node.userData.explodeVec, on ? 1 : 0));
+        object.updateMatrixWorld(true);
+        fitStudioToModel(object);
       };
       const shots = [];
       try {
@@ -6382,25 +6628,30 @@
         renderer.setPixelRatio(1);
         renderer.setSize(size, size, false);
         camera.aspect = 1;
+        camera.fov = 24;
         camera.updateProjectionMatrix();
 
-        const sphere = new THREE.Box3().setFromObject(object).getBoundingSphere(new THREE.Sphere());
-        const distance = (sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.04;
-        BUILD_VIEWS.forEach((view) => {
+        views.forEach((view) => {
+          if (view.exploded) setExploded(true);
+          const box = new THREE.Box3().setFromObject(object);
+          const centre = box.getCenter(new THREE.Vector3());
           const dir = new THREE.Vector3(...view.dir).normalize();
-          camera.up.set(0, 1, 0);
-          if (view.key === 'top') camera.up.set(0, 0, -1);
-          camera.position.copy(sphere.center).addScaledVector(dir, distance);
-          camera.lookAt(sphere.center);
+          const up = new THREE.Vector3(...(view.up || [0, 1, 0]));
+          camera.up.copy(up);
+          camera.position.copy(centre).addScaledVector(dir, frameDistance(box, centre, dir, up, camera.fov));
+          camera.lookAt(centre);
           renderer.render(scene, camera);
           shots.push({ key: view.key, label: view.label, dataUrl: renderer.domElement.toDataURL('image/jpeg', 0.86) });
+          if (view.exploded) setExploded(false);
         });
       } finally {
+        if (exploding.length) setExploded(false);
         scene.remove(object);
         camera.up.set(0, 1, 0);
         camera.position.copy(saved.position);
         camera.quaternion.copy(saved.quaternion);
         camera.aspect = saved.aspect;
+        camera.fov = saved.fov;
         camera.updateProjectionMatrix();
         renderer.setPixelRatio(saved.pixelRatio);
         renderer.setSize(saved.size.x, saved.size.y, false);

@@ -294,7 +294,7 @@ const BUILDER_TOOLS = [
     name: 'submit_model',
     description:
       'Submit a complete version of the model. The studio runs the code in its sandbox, exports the result as .glb and ' +
-      'replies with build statistics and studio renders from five fixed angles (or the error if it failed to build). ' +
+      'replies with build statistics and six studio renders, five fixed angles plus an exploded view (or the error if it failed to build). ' +
       'Always send the complete program, never a diff.',
     strict: true,
     eager_input_streaming: true,
@@ -688,7 +688,7 @@ function createBuilderJob(body) {
     `What the user says it is: ${notes || 'not specified; identify it from the photos'}`,
     maxRounds === 1
       ? 'You have one version: it is built and saved without a review round, so make it as complete and accurate as you can.'
-      : `You can submit up to ${maxRounds} versions. After each one you will see studio renders of it from five fixed angles to compare with the photos.`,
+      : `You can submit up to ${maxRounds} versions. After each one you will see six studio renders of it (five fixed angles and an exploded view) to compare with the photos.`,
     'Start by studying the photos: identify the object, its real-world dimensions, its major sub-assemblies, materials, colours and distinctive details. Then call submit_model with your first complete version.'
   ].join('\n');
 
