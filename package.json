@@ -1,0 +1,16 @@
+{
+  "name": "3d-hardware-glb-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Classroom 3D PC hardware CAD & GLB studio with AI image-to-3D, .glb import and the AI Builder",
+  "scripts": {
+    "start": "node studio-server.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "playwright-core": "^1.64.1"
+  }
+}

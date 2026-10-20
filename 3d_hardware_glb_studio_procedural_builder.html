@@ -375,7 +375,7 @@
       <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
         <div>
           <h3 id="i3d-title" class="font-semibold text-sm text-white">Image → 3D Model</h3>
-          <p class="text-xs text-slate-400">Turn a photo of one object into a textured .glb with an AI 3D generator, or import an existing .glb</p>
+          <p class="text-xs text-slate-400">Turn photos of one object into a 3D model with an AI generator or the AI Builder, or import an existing .glb</p>
         </div>
         <button id="i3d-close" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white" aria-label="Close">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -394,17 +394,21 @@
         <div id="i3d-panel-generate" class="space-y-4">
           <div id="i3d-server-note" class="hidden rounded-xl border border-amber-500/40 bg-amber-500/10 px-3.5 py-3 text-xs text-amber-100 leading-relaxed"></div>
           <div class="grid sm:grid-cols-2 gap-4">
-            <label id="i3d-drop" class="relative flex flex-col items-center justify-center gap-2 min-h-[220px] rounded-xl border-2 border-dashed border-slate-700 hover:border-fuchsia-500/70 bg-slate-900/60 cursor-pointer transition text-center p-4">
-              <input id="i3d-file" type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" />
-              <img id="i3d-preview" alt="Selected photo" class="hidden max-h-[200px] max-w-full rounded-lg object-contain" />
-              <div id="i3d-drop-hint" class="text-xs text-slate-400 flex flex-col items-center gap-1.5">
-                <svg class="w-8 h-8 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M4 16l4.6-4.6a2 2 0 012.8 0L16 16m-2-2l1.6-1.6a2 2 0 012.8 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                <span class="font-medium text-slate-200">Drop a photo, click to browse, or paste</span>
-                <span class="text-[11px]">PNG, JPEG or WebP · up to 20 MB</span>
-              </div>
-            </label>
+            <div class="space-y-2">
+              <label id="i3d-drop" class="relative flex flex-col items-center justify-center gap-2 min-h-[220px] rounded-xl border-2 border-dashed border-slate-700 hover:border-fuchsia-500/70 bg-slate-900/60 cursor-pointer transition text-center p-4">
+                <input id="i3d-file" type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" />
+                <img id="i3d-preview" alt="Selected photo" class="hidden max-h-[200px] max-w-full rounded-lg object-contain" />
+                <div id="i3d-drop-hint" class="text-xs text-slate-400 flex flex-col items-center gap-1.5">
+                  <svg class="w-8 h-8 text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M4 16l4.6-4.6a2 2 0 012.8 0L16 16m-2-2l1.6-1.6a2 2 0 012.8 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span id="i3d-drop-title" class="font-medium text-slate-200">Drop a photo, click to browse, or paste</span>
+                  <span class="text-[11px]">PNG, JPEG or WebP · up to 20 MB</span>
+                </div>
+              </label>
+              <!-- Extra angles for the AI Builder: one thumbnail per photo, each removable -->
+              <div id="i3d-thumbs" class="hidden flex flex-wrap gap-2" aria-label="Selected photos"></div>
+            </div>
             <div class="space-y-3">
               <div>
                 <label for="i3d-name" class="text-xs text-slate-300">Model name</label>
@@ -437,12 +441,25 @@
                   <option value="2048">2048 px</option>
                 </select>
               </div>
+              <div id="i3d-opts-builder" class="hidden space-y-2.5">
+                <div>
+                  <label for="i3d-notes" class="text-xs text-slate-300">What is it? <span class="text-slate-500">(optional, helps the AI)</span></label>
+                  <textarea id="i3d-notes" rows="3" maxlength="600" placeholder="e.g. Dual-fan graphics card, about 27 cm long, black shroud with silver accents and a metal backplate" class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 resize-y"></textarea>
+                </div>
+                <div>
+                  <label for="i3d-rounds" class="text-xs text-slate-300">Refinement</label>
+                  <select id="i3d-rounds" class="mt-1 w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-xs text-white focus:outline-none focus:border-fuchsia-500">
+                    <option value="1">1 version · fastest, lowest cost</option>
+                    <option value="2">Up to 2 versions</option>
+                    <option value="3" selected>Up to 3 versions · recommended</option>
+                    <option value="4">Up to 4 versions</option>
+                    <option value="5">Up to 5 versions · most refined</option>
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
-          <p class="text-[11px] text-slate-400 leading-relaxed">
-            Best results: a single object on a plain, uncluttered background, evenly lit and photographed at a three-quarter angle.
-            The photo is uploaded to the generator you choose, and that service's pricing and terms apply.
-          </p>
+          <p id="i3d-tips" class="text-[11px] text-slate-400 leading-relaxed"></p>
           <div id="i3d-progress" class="hidden rounded-xl border border-slate-800 bg-slate-900/70 p-3">
             <div class="flex justify-between text-xs mb-1.5">
               <span id="i3d-status" class="text-slate-200">Uploading photo…</span>
@@ -451,8 +468,14 @@
             <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
               <div id="i3d-bar" class="h-full w-0 rounded-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 transition-all duration-500"></div>
             </div>
-            <p class="mt-2 text-[11px] text-slate-500">You can close this window; the model is added to your library when it is ready.</p>
+            <p id="i3d-live" class="hidden mt-2 text-[11px] text-slate-400 italic leading-relaxed line-clamp-3"></p>
+            <div class="mt-2 flex justify-between gap-3 text-[11px] text-slate-500">
+              <span id="i3d-progress-note">You can close this window; the model is added to your library when it is ready.</span>
+              <span id="i3d-cost" class="mono shrink-0"></span>
+            </div>
           </div>
+          <!-- AI Builder: one card per version with the studio renders Claude was shown -->
+          <div id="i3d-versions" class="hidden space-y-2"></div>
           <div id="i3d-error" class="hidden rounded-xl border border-rose-500/40 bg-rose-500/10 px-3.5 py-2.5 text-xs text-rose-100 leading-relaxed"></div>
         </div>
 
@@ -482,7 +505,10 @@
     </div>
   </div>
 
-  <script>
+  <!-- Modelling toolkit: textures, CAD helpers, parts, materials and the nine builders. The AI Builder
+       also runs this script, inside a sandboxed worker, so it must not touch the page beyond creating
+       canvases or depend on app state other than the optional `renderer`. -->
+  <script id="studio-toolkit">
     // ============================================================================
     // 1. PROCEDURAL PBR TEXTURE ENGINE (Color + Normal + Roughness/Metal maps, baked into GLB)
     // ============================================================================
@@ -4044,6 +4070,24 @@
       return root;
     }
 
+    // GLTFExporter r128 has no clearcoat writer, so emit KHR_materials_clearcoat ourselves to keep the
+    // glossy solder-mask lacquer over the PCB artwork in exported files
+    function ClearcoatExportPlugin(writer) {
+      return {
+        writeMaterial(material, materialDef) {
+          if (!material.isMeshPhysicalMaterial || !material.clearcoat) return;
+          materialDef.extensions = materialDef.extensions || {};
+          materialDef.extensions.KHR_materials_clearcoat = {
+            clearcoatFactor: material.clearcoat,
+            clearcoatRoughnessFactor: material.clearcoatRoughness
+          };
+          writer.extensionsUsed.KHR_materials_clearcoat = true;
+        }
+      };
+    }
+  </script>
+
+  <script>
     // ============================================================================
     // 4. ASSET REGISTRY & CLASSROOM TRAINING CALLOUT ANNOTATIONS
     // ============================================================================
@@ -4366,7 +4410,7 @@
             ${idx + 1}
           </span>
           <span class="px-2 py-0.5 rounded-md bg-slate-950/90 border border-indigo-400/50 text-[11px] font-medium text-indigo-100 whitespace-nowrap shadow-md">
-            ${c.tag}
+            ${escapeHTML(c.tag)}
           </span>
         `;
 
@@ -4453,9 +4497,7 @@
       updateHUDAndHierarchy(item.filename, item.subtitle);
       document.getElementById('hud-model-badge').textContent = !item.library
         ? 'CAD Beveled PBR'
-        : item.record.source === 'generated'
-          ? 'AI Image → 3D'
-          : 'Imported GLB';
+        : { generated: 'AI Image → 3D', 'ai-built': 'AI Builder · CAD Code' }[item.record.source] || 'Imported GLB';
       buildCalloutPins(item);
       renderAssetSidebar();
 
@@ -4496,6 +4538,14 @@
       renderAssetSidebar();
     }
 
+    // Library models arrive wrapped (studio fit group, glTF scene, exported root): list the parts below the
+    // wrappers so the panel shows the real sub-assemblies, as it does for the built-in models
+    function hierarchyRoot(group) {
+      let node = group;
+      while (node.children.length === 1 && !node.children[0].isMesh && node.children[0].children.length) node = node.children[0];
+      return node;
+    }
+
     function updateHUDAndHierarchy(filename, subtitle) {
       document.getElementById('hud-model-title').textContent = filename;
       document.getElementById('export-btn-filename').textContent = filename;
@@ -4510,7 +4560,7 @@
       if (!currentModelGroup) return;
 
       // Populate Top-Level Named Sub-Assemblies & Meshes
-      currentModelGroup.children.forEach((subGroup, idx) => {
+      hierarchyRoot(currentModelGroup).children.forEach((subGroup, idx) => {
         let subTris = 0;
         subGroup.traverse((c) => {
           if (c.isMesh && c.geometry) {
@@ -4642,22 +4692,6 @@
       toast.hideTimer = setTimeout(() => {
         toast.classList.add('hidden');
       }, duration);
-    }
-
-    // GLTFExporter r128 has no clearcoat writer, so emit KHR_materials_clearcoat ourselves to keep the
-    // glossy solder-mask lacquer over the PCB artwork in exported files
-    function ClearcoatExportPlugin(writer) {
-      return {
-        writeMaterial(material, materialDef) {
-          if (!material.isMeshPhysicalMaterial || !material.clearcoat) return;
-          materialDef.extensions = materialDef.extensions || {};
-          materialDef.extensions.KHR_materials_clearcoat = {
-            clearcoatFactor: material.clearcoat,
-            clearcoatRoughnessFactor: material.clearcoatRoughness
-          };
-          writer.extensionsUsed.KHR_materials_clearcoat = true;
-        }
-      };
     }
 
     function exportObjectToGLB(object3D, filename, binary = true) {
@@ -4841,7 +4875,7 @@
       // Show All Sub-Meshes
       document.getElementById('btn-show-all-nodes').addEventListener('click', () => {
         if (!currentModelGroup) return;
-        currentModelGroup.children.forEach((c) => (c.visible = true));
+        hierarchyRoot(currentModelGroup).children.forEach((c) => (c.visible = true));
         const item = HARDWARE_REGISTRY[activeAssetIndex];
         updateHUDAndHierarchy(
           isGridView ? 'All_9_Hardware_Kit.glb' : item.filename,
@@ -4973,10 +5007,15 @@
           `// ==========================================================================\n` +
           `// 2. EDITABLE PROCEDURAL GENERATOR FUNCTION FOR: ${currentAsset.title}\n` +
           `// ==========================================================================\n` +
-          (currentAsset.library
-            ? `// "${currentAsset.title}" is a ${currentAsset.record.source === 'generated' ? 'mesh generated by AI from a photo' : 'mesh imported from a .glb file'},\n` +
-              `// so it has no procedural generator code. Export it and load it as shown above.\n`
-            : currentAsset.builder.toString());
+          (!currentAsset.library
+            ? currentAsset.builder.toString()
+            : currentAsset.record.source === 'ai-built' && currentAsset.record.code
+              ? `// Written by the AI Builder from your photos. It runs inside this studio, where three.js r128 and the\n` +
+                `// modelling toolkit (CAD, Parts, ProceduralTextures, createPBRMaterials, setExplodeOffset) are loaded:\n` +
+                `// buildModel() returns the model as a THREE.Group.\n\n` +
+                currentAsset.record.code
+              : `// "${currentAsset.title}" is a ${currentAsset.record.source === 'generated' ? 'mesh generated by AI from a photo' : 'mesh imported from a .glb file'},\n` +
+                `// so it has no procedural generator code. Export it and load it as shown above.\n`);
         document.getElementById('source-modal').classList.remove('hidden');
       });
 
@@ -5077,14 +5116,29 @@
       const centre = box.getCenter(new THREE.Vector3());
       const scale = 1.6 / Math.max(size.x, size.y, size.z, 1e-6);
 
-      const parts = gltfScene.children.filter((child) => {
+      // Explode offsets written by this studio (its own exports and AI Builder models) come back as node
+      // extras; keep those and only invent offsets for models that have none
+      let authoredExplode = false;
+      gltfScene.traverse((node) => {
+        const v = node.userData.explodeVec;
+        delete node.userData.explodeVec;
+        delete node.userData.basePos;
+        if (v && [v.x, v.y, v.z].every(Number.isFinite)) {
+          setExplodeOffset(node, v.x, v.y, v.z);
+          authoredExplode = true;
+        }
+      });
+
+      let parts = gltfScene.children.filter((child) => {
         let hasMesh = false;
         child.traverse((node) => {
           if (node.isMesh) hasMesh = true;
         });
         return hasMesh;
       });
-      if (parts.length > 1) {
+      // A studio export wraps everything in one root group: explode its sub-assemblies instead
+      if (parts.length === 1 && parts[0].children.length > 1) parts = parts[0].children;
+      if (!authoredExplode && parts.length > 1) {
         parts.forEach((part) => {
           const dir = new THREE.Box3().setFromObject(part).getCenter(new THREE.Vector3()).sub(centre);
           if (dir.lengthSq() < 1e-10) return;
@@ -5110,28 +5164,65 @@
       return root;
     }
 
+    // AI Builder callouts are authored in the model's own coordinates: map them through the centring and
+    // scaling buildStudioTemplate applied, into the studio root's space where the pins are projected
+    function calloutsToStudio(template, callouts) {
+      if (!Array.isArray(callouts) || !callouts.length) return [];
+      template.updateMatrixWorld(true);
+      const gltfScene = template.children[0] && template.children[0].children[0];
+      if (!gltfScene) return [];
+      const modelRoot = gltfScene.children.length === 1 ? gltfScene.children[0] : gltfScene;
+      return callouts
+        .filter((c) => c && Array.isArray(c.pos) && c.pos.length === 3 && c.pos.every(Number.isFinite))
+        .map((c) => ({
+          tag: String(c.tag || ''),
+          desc: String(c.desc || ''),
+          pos: new THREE.Vector3(...c.pos).applyMatrix4(modelRoot.matrixWorld).toArray()
+        }));
+    }
+
     function registerLibraryAsset(record, template) {
       const date = new Date(record.createdAt).toLocaleDateString();
-      const generated = record.source === 'generated';
+      const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      const kinds = {
+        generated: {
+          subtitle: `AI image-to-3D · ${record.providerName}`,
+          lesson: {
+            tag: 'AI-generated model',
+            desc: `Generated on ${date} by ${record.providerName} from “${record.sourceName}”. Shape and textures are the AI's reconstruction of the photo, so check proportions against the real part before teaching with it. Adjust materials in the PBR editor, then export.`
+          }
+        },
+        'ai-built': {
+          subtitle: record.subtitle || 'AI Builder procedural model',
+          lesson: {
+            tag: 'AI-built model',
+            desc:
+              `${record.summary ? `${record.summary} ` : ''}Built on ${date} by the AI Builder` +
+              `${record.photos ? ` from ${plural(record.photos, 'photo')}` : ''}${record.versions ? ` in ${plural(record.versions, 'version')}` : ''}: ` +
+              `Claude wrote the procedural CAD code (open Source to read it) and checked studio renders against the reference photos. ` +
+              'Check dimensions against the real part before teaching with it.'
+          }
+        },
+        imported: {
+          subtitle: 'Imported .glb model',
+          lesson: {
+            tag: 'Imported model',
+            desc: `Imported on ${date} from “${record.sourceName}”. Inspect it, adjust materials in the PBR editor and re-export it as .glb.`
+          }
+        }
+      };
+      const kind = kinds[record.source] || kinds.imported;
       const asset = {
         id: record.id,
         library: true,
         record,
         filename: `${record.fileBase}.glb`,
-        title: record.name,
-        subtitle: generated ? `AI image-to-3D · ${record.providerName}` : 'Imported .glb model',
+        title: record.title || record.name,
+        subtitle: kind.subtitle,
         builder: () => template.clone(),
         camPos: [1.55, 1.0, 1.95],
-        callouts: [],
-        lesson: generated
-          ? {
-              tag: 'AI-generated model',
-              desc: `Generated on ${date} by ${record.providerName} from “${record.sourceName}”. Shape and textures are the AI's reconstruction of the photo, so check proportions against the real part before teaching with it. Adjust materials in the PBR editor, then export.`
-            }
-          : {
-              tag: 'Imported model',
-              desc: `Imported on ${date} from “${record.sourceName}”. Inspect it, adjust materials in the PBR editor and re-export it as .glb.`
-            }
+        callouts: record.source === 'ai-built' ? calloutsToStudio(template, record.callouts) : [],
+        lesson: kind.lesson
       };
       HARDWARE_REGISTRY.push(asset);
       return asset;
@@ -5152,19 +5243,39 @@
       return thumb.toDataURL('image/jpeg', 0.85);
     }
 
-    async function addModelToLibrary({ glb, name, source, providerName = null, sourceName, thumb = null }) {
+    // A .glb written by the AI Builder (in the studio or by tools/build-model.mjs) carries its code, title
+    // and teaching callouts on the root node, so importing it restores them
+    function embeddedBuilderInfo(gltfScene) {
+      const info = gltfScene.children.length === 1 && gltfScene.children[0].userData.aiBuilder;
+      if (!info || typeof info.code !== 'string') return null;
+      const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');
+      return {
+        code: info.code,
+        title: text(info.title, 80),
+        subtitle: text(info.subtitle, 140),
+        summary: text(info.summary, 600),
+        callouts: Array.isArray(info.callouts) ? info.callouts.slice(0, 8) : []
+      };
+    }
+
+    // `extra` carries source-specific fields, e.g. the AI Builder's code, callouts and summary
+    async function addModelToLibrary({ glb, name, source, providerName = null, sourceName, thumb = null, extra = {} }) {
+      const gltfScene = await parseGLB(glb.slice(0));
+      const embedded = source === 'imported' ? embeddedBuilderInfo(gltfScene) : null;
       const record = {
+        ...extra,
+        ...embedded,
         id: `lib_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
         name,
         fileBase: name,
-        source,
-        providerName,
+        source: embedded ? 'ai-built' : source,
+        providerName: embedded ? 'AI Builder' : providerName,
         sourceName,
         createdAt: Date.now(),
         glb,
         thumb
       };
-      const template = buildStudioTemplate(await parseGLB(glb.slice(0)), record);
+      const template = buildStudioTemplate(gltfScene, record);
       const asset = registerLibraryAsset(record, template);
       loadSingleAsset(HARDWARE_REGISTRY.indexOf(asset));
       if (!record.thumb) record.thumb = captureViewportThumbnail();
@@ -5214,7 +5325,7 @@
     const ImageTo3D = {
       providers: [],
       serverReady: false,
-      image: null,
+      images: [],
       job: null,
       elapsedTimer: null,
       nameEdited: false,
@@ -5257,6 +5368,20 @@
         note.classList.toggle('hidden', !html);
       },
 
+      provider() {
+        return this.providers.find((p) => p.id === this.el('i3d-provider').value) || null;
+      },
+
+      isBuilder() {
+        const provider = this.provider();
+        return Boolean(provider && provider.id === 'ai-builder');
+      },
+
+      // The AI Builder studies several angles; the mesh generators reconstruct from a single photo
+      maxPhotos() {
+        return this.isBuilder() ? 4 : 1;
+      },
+
       async refreshProviders() {
         const serverHelp =
           'Generating from photos runs through the studio\'s small local server, which keeps your AI API key private. ' +
@@ -5277,7 +5402,8 @@
                 ? ''
                 : 'No AI generator is configured yet. Add a key to the <code class="mono text-white">.env</code> file next to ' +
                     '<code class="mono text-white">studio-server.mjs</code> and restart it, e.g. ' +
-                    '<code class="mono text-white">MESHY_API_KEY=…</code> or <code class="mono text-white">STABILITY_API_KEY=…</code>. ' +
+                    '<code class="mono text-white">ANTHROPIC_API_KEY=…</code> for the AI Builder, or ' +
+                    '<code class="mono text-white">MESHY_API_KEY=…</code> / <code class="mono text-white">STABILITY_API_KEY=…</code>. ' +
                     'Meshy\'s free test key <code class="mono text-white">msy_dummy_api_key_for_test_mode_12345678</code> returns a sample model so you can try the workflow.'
             );
           } catch (err) {
@@ -5292,7 +5418,7 @@
         select.innerHTML = '';
         if (!this.providers.length) select.add(new Option('Studio server not running', ''));
         this.providers.forEach((p) => {
-          const label = `${p.name}${p.testMode ? ' (test mode)' : ''}${p.configured ? '' : ' (add API key)'}`;
+          const label = `${p.name}${p.testMode ? ' (test mode)' : ''}${p.configured ? '' : ` (${p.setup || 'add API key'})`}`;
           const option = new Option(label, p.id);
           option.disabled = !p.configured;
           select.add(option);
@@ -5304,18 +5430,30 @@
       },
 
       updateProviderUI() {
-        const provider = this.providers.find((p) => p.id === this.el('i3d-provider').value);
-        this.el('i3d-opts-meshy').classList.toggle('hidden', !provider || provider.id !== 'meshy');
-        this.el('i3d-opts-stability').classList.toggle('hidden', !provider || provider.id !== 'stability');
+        const provider = this.provider();
+        const id = provider ? provider.id : '';
+        const builder = id === 'ai-builder';
+        this.el('i3d-opts-meshy').classList.toggle('hidden', id !== 'meshy');
+        this.el('i3d-opts-stability').classList.toggle('hidden', id !== 'stability');
+        this.el('i3d-opts-builder').classList.toggle('hidden', !builder);
         this.el('i3d-provider-note').textContent = provider
           ? `${provider.detail}.${provider.testMode ? ' Test mode returns Meshy\'s sample model and uses no credits.' : ''}`
           : '';
+        this.el('i3d-file').multiple = builder;
+        this.el('i3d-drop-title').textContent = builder ? 'Drop up to 4 photos, click to browse, or paste' : 'Drop a photo, click to browse, or paste';
+        this.el('i3d-tips').textContent = builder
+          ? 'Best results: one object photographed from a few angles (front, back, top) on a plain background, plus a note on what it is. ' +
+            'Claude studies the photos, writes procedural CAD code with the studio\'s modelling toolkit, then compares studio renders of each version with your photos and refines it. ' +
+            'The photos are sent to Anthropic\'s API, whose pricing and terms apply.'
+          : 'Best results: a single object on a plain, uncluttered background, evenly lit and photographed at a three-quarter angle. ' +
+            'The photo is uploaded to the generator you choose, and that service\'s pricing and terms apply.';
+        this.renderPhotos();
         this.updateGenerateButton();
       },
 
       updateGenerateButton() {
-        const provider = this.providers.find((p) => p.id === this.el('i3d-provider').value);
-        this.el('i3d-generate').disabled = !(this.serverReady && provider && provider.configured && this.image && !this.job);
+        const provider = this.provider();
+        this.el('i3d-generate').disabled = !(this.serverReady && provider && provider.configured && this.images.length && !this.job);
       },
 
       showError(message, target = 'i3d-error') {
@@ -5326,16 +5464,9 @@
 
       // Downscale to at most 1024 px: plenty for the generators and keeps uploads quick. PNG/WebP stay PNG
       // so cut-out photos keep their transparent background.
-      async setImageFile(file) {
-        this.showError('');
-        if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) {
-          this.showError('Choose a PNG, JPEG or WebP photo.');
-          return;
-        }
-        if (file.size > 20 * 1024 * 1024) {
-          this.showError('That photo is larger than 20 MB.');
-          return;
-        }
+      async readPhoto(file) {
+        if (!file || !/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error('Choose a PNG, JPEG or WebP photo.');
+        if (file.size > 20 * 1024 * 1024) throw new Error('That photo is larger than 20 MB.');
         let img;
         const url = URL.createObjectURL(file);
         try {
@@ -5346,8 +5477,7 @@
             el.src = url;
           });
         } catch (err) {
-          this.showError('This image could not be read.');
-          return;
+          throw new Error('This image could not be read.');
         } finally {
           URL.revokeObjectURL(url);
         }
@@ -5370,19 +5500,91 @@
         const th = canvas.height * fitScale;
         tctx.drawImage(canvas, (160 - tw) / 2, (160 - th) / 2, tw, th);
 
-        this.image = { dataUrl, thumb: thumb.toDataURL('image/jpeg', 0.85), fileName: file.name || 'pasted image' };
-        this.el('i3d-preview').src = dataUrl;
-        this.el('i3d-preview').classList.remove('hidden');
-        this.el('i3d-drop-hint').classList.add('hidden');
-        if (!this.nameEdited) this.el('i3d-name').value = toModelName(file.name);
+        return { dataUrl, thumb: thumb.toDataURL('image/jpeg', 0.85), fileName: file.name || 'pasted image' };
+      },
+
+      // A single-photo generator replaces the photo; the AI Builder collects up to four angles
+      async addPhotos(files) {
+        this.showError('');
+        const max = this.maxPhotos();
+        for (const file of Array.from(files || []).filter(Boolean)) {
+          let photo;
+          try {
+            photo = await this.readPhoto(file);
+          } catch (err) {
+            this.showError(err.message);
+            continue;
+          }
+          if (max === 1) {
+            this.images = [photo];
+          } else if (this.images.length < max) {
+            this.images.push(photo);
+          } else {
+            this.showError(`The AI Builder uses up to ${max} photos. Remove one to add another.`);
+            break;
+          }
+        }
+        if (!this.nameEdited && this.images.length) this.el('i3d-name').value = toModelName(this.images[this.images.length - 1].fileName);
+        this.renderPhotos();
         this.updateGenerateButton();
       },
 
-      setRunning(running) {
+      removePhoto(index) {
+        this.images.splice(index, 1);
+        this.renderPhotos();
+        this.updateGenerateButton();
+      },
+
+      renderPhotos() {
+        const first = this.images[0];
+        const preview = this.el('i3d-preview');
+        preview.classList.toggle('hidden', !first);
+        this.el('i3d-drop-hint').classList.toggle('hidden', Boolean(first));
+        if (first) preview.src = first.dataUrl;
+        else preview.removeAttribute('src');
+
+        const strip = this.el('i3d-thumbs');
+        const builder = this.isBuilder();
+        const show = this.images.length > 1 || (builder && this.images.length > 0);
+        strip.classList.toggle('hidden', !show);
+        strip.innerHTML = '';
+        if (!show) return;
+        this.images.forEach((photo, i) => {
+          const item = document.createElement('div');
+          item.className = 'relative';
+          item.innerHTML = `
+            <img src="${escapeHTML(photo.thumb)}" alt="Photo ${i + 1}" title="${escapeHTML(photo.fileName)}" class="w-14 h-14 rounded-lg object-cover border ${i === 0 ? 'border-fuchsia-500/70' : 'border-slate-700'}" />
+            <button type="button" data-remove-photo="${i}" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-800 hover:bg-rose-600 border border-slate-600 text-[10px] leading-none text-slate-200" aria-label="Remove photo ${i + 1}">✕</button>`;
+          strip.appendChild(item);
+        });
+        if (builder && this.images.length < this.maxPhotos()) {
+          const add = document.createElement('button');
+          add.type = 'button';
+          add.dataset.addPhoto = '1';
+          add.className = 'w-14 h-14 rounded-lg border border-dashed border-slate-600 hover:border-fuchsia-500/70 text-[10px] text-slate-400 hover:text-slate-200 leading-tight';
+          add.textContent = '+ angle';
+          strip.appendChild(add);
+        }
+        if (!builder && this.images.length > 1) {
+          const note = document.createElement('span');
+          note.className = 'self-center text-[11px] text-slate-500';
+          note.textContent = 'This generator uses the first photo';
+          strip.appendChild(note);
+        }
+      },
+
+      setRunning(running, builder = false) {
         this.el('i3d-progress').classList.toggle('hidden', !running);
         this.el('i3d-cancel-job').classList.toggle('hidden', !running);
+        this.el('i3d-live').classList.add('hidden');
         clearInterval(this.elapsedTimer);
         if (running) {
+          this.el('i3d-cost').textContent = '';
+          this.el('i3d-versions').innerHTML = '';
+          this.el('i3d-versions').classList.add('hidden');
+          this.el('i3d-progress-note').textContent = builder
+            ? 'You can close this window, but keep this tab open: it builds and renders each version.'
+            : 'You can close this window; the model is added to your library when it is ready.';
           const started = Date.now();
           const tick = () => {
             const s = Math.floor((Date.now() - started) / 1000);
@@ -5404,22 +5606,27 @@
       },
 
       async generate() {
-        if (!this.image || this.job) return;
+        if (!this.images.length || this.job) return;
         const provider = this.el('i3d-provider').value;
-        const name = toModelName(this.el('i3d-name').value, toModelName(this.image.fileName));
+        const name = toModelName(this.el('i3d-name').value, toModelName(this.images[0].fileName));
+        if (provider === 'ai-builder') {
+          this.generateBuild(name);
+          return;
+        }
+        const image = this.images[0];
         const options =
           provider === 'meshy'
             ? { pbr: this.el('i3d-pbr').checked, polycount: Number(this.el('i3d-poly').value) }
             : { textureResolution: Number(this.el('i3d-texres').value) };
         this.showError('');
-        this.job = { id: null, provider, name, image: this.image, cancelled: false };
+        this.job = { id: null, provider, name, image, cancelled: false };
         this.setRunning(true);
         this.updateProgress('Uploading photo…', 0);
         try {
           const res = await fetch('api/image-to-3d', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Studio-Client': '1' },
-            body: JSON.stringify({ provider, image: this.image.dataUrl, options })
+            body: JSON.stringify({ provider, image: image.dataUrl, options })
           });
           const body = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(body.error || `The studio server returned ${res.status}`);
@@ -5467,13 +5674,234 @@
         }
       },
 
+      // ----------------------------------------------------------------------
+      // AI Builder: studio-server.mjs holds the conversation with Claude. This tab builds each version
+      // Claude submits in the sandbox, renders it from fixed angles and posts the views back, until
+      // Claude accepts a version or the refinement budget runs out.
+      // ----------------------------------------------------------------------
+      async generateBuild(name) {
+        const job = {
+          id: null,
+          provider: 'ai-builder',
+          name,
+          images: this.images.slice(),
+          cancelled: false,
+          builds: new Map(),
+          handled: new Set()
+        };
+        this.showError('');
+        this.job = job;
+        this.setRunning(true, true);
+        this.updateProgress('Sending photos to the AI Builder…', 0);
+        // Boot the sandbox (loads three.js and the toolkit into it) while Claude studies the photos
+        BuildSandbox.prepare().catch(() => {});
+        try {
+          const res = await fetch('api/ai-builder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Studio-Client': '1' },
+            body: JSON.stringify({
+              images: job.images.map((photo) => photo.dataUrl),
+              name,
+              notes: this.el('i3d-notes').value.trim(),
+              maxRounds: Number(this.el('i3d-rounds').value) || 3
+            })
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(body.error || `The studio server returned ${res.status}`);
+          job.id = body.jobId;
+          this.pollBuild(job);
+        } catch (err) {
+          this.finishJob(job, err.message === 'Failed to fetch' ? 'Could not reach the studio server. Is studio-server.mjs still running?' : err.message);
+        }
+      },
+
+      // Each version fills an equal share of the bar; `within` is how far through its version we are
+      buildProgress(state, within) {
+        return Math.max(3, ((Math.min(state.versions, state.maxRounds - 1) + within) / state.maxRounds) * 100);
+      },
+
+      async pollBuild(job) {
+        while (!job.cancelled) {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (job.cancelled) return;
+          let state;
+          try {
+            const res = await fetch(`api/ai-builder/${job.id}`, { cache: 'no-store' });
+            state = await res.json();
+            if (!res.ok) throw new Error(state.error || `HTTP ${res.status}`);
+          } catch (err) {
+            this.finishJob(job, `Lost contact with the studio server (${err.message}).`);
+            return;
+          }
+          if (job.cancelled) return;
+          this.showCost(state);
+          if (state.status === 'failed') {
+            this.finishJob(job, state.error || 'The AI Builder could not finish this model.');
+            return;
+          }
+          if (state.status === 'done') {
+            await this.completeBuild(job, state);
+            return;
+          }
+          if (state.status === 'awaiting-render' && state.submission && !job.handled.has(state.submission.round)) {
+            job.handled.add(state.submission.round);
+            await this.buildVersion(job, state);
+          } else if (state.status === 'thinking') {
+            const live = state.live || {};
+            this.updateProgress(state.message, this.buildProgress(state, 0.1 + 0.5 * Math.min(1, (live.codeChars || 0) / 30000)));
+            this.showLive(live.thinking);
+          }
+        }
+      },
+
+      async buildVersion(job, state) {
+        const sub = state.submission;
+        const card = this.addVersionCard(sub);
+        this.showLive('');
+        this.updateProgress(`Building version ${sub.round} in the sandbox…`, this.buildProgress(state, 0.65));
+        let result;
+        try {
+          result = await BuildSandbox.build(sub.code, { title: sub.title, subtitle: sub.subtitle, summary: sub.summary, callouts: sub.callouts });
+        } catch (err) {
+          result = { ok: false, error: `The build sandbox failed: ${err.message}`, logs: [] };
+        }
+        if (job.cancelled) return;
+
+        let report;
+        if (result.ok) {
+          try {
+            this.updateProgress(`Rendering version ${sub.round}…`, this.buildProgress(state, 0.8));
+            const template = buildStudioTemplate(await parseGLB(result.glb.slice(0)), { fileBase: job.name });
+            const views = captureModelViews(template);
+            job.builds.set(sub.round, { glb: result.glb, views });
+            report = {
+              round: sub.round,
+              ok: true,
+              stats: result.stats,
+              logs: result.logs,
+              buildMs: result.buildMs,
+              views: views.map((v) => ({ key: v.key, label: v.label, image: v.dataUrl }))
+            };
+          } catch (err) {
+            report = { round: sub.round, ok: false, error: `The code ran, but its exported .glb could not be displayed: ${err.message}`, logs: result.logs || [] };
+          }
+        } else {
+          report = { round: sub.round, ok: false, error: result.error || 'The build failed', logs: result.logs || [] };
+        }
+        this.updateVersionCard(card, report, job.builds.get(sub.round));
+        this.updateProgress(
+          !report.ok
+            ? `Version ${sub.round} did not build; Claude is fixing it…`
+            : sub.last
+              ? 'Finishing…'
+              : `Claude is comparing version ${sub.round} with your photos…`,
+          this.buildProgress(state, 1)
+        );
+        try {
+          const res = await fetch(`api/ai-builder/${job.id}/render`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Studio-Client': '1' },
+            body: JSON.stringify(report)
+          });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error || `HTTP ${res.status}`);
+          }
+        } catch (err) {
+          if (!job.cancelled) this.finishJob(job, `Could not send version ${sub.round} back to the studio server (${err.message}).`);
+        }
+      },
+
+      async completeBuild(job, state) {
+        const result = state.result;
+        const build = result && job.builds.get(result.round);
+        if (!build) {
+          this.finishJob(job, 'The AI Builder finished, but the final version is not in this tab. Was the page reloaded during the build?');
+          return;
+        }
+        this.updateProgress('Adding the model to your library…', 100);
+        try {
+          await addModelToLibrary({
+            glb: build.glb,
+            name: job.name,
+            source: 'ai-built',
+            providerName: 'AI Builder',
+            sourceName: job.images.map((photo) => photo.fileName).join(', '),
+            thumb: await thumbnailFromDataUrl(build.views[0].dataUrl),
+            extra: {
+              code: result.code,
+              title: result.title,
+              subtitle: result.subtitle,
+              summary: result.summary,
+              callouts: result.callouts,
+              versions: state.versions,
+              photos: job.images.length,
+              generator: state.model,
+              costUsd: state.costUsd
+            }
+          });
+          this.finishJob(job, null);
+          showToast(`${job.name}.glb built by the AI Builder and added to your library`, 4500);
+        } catch (err) {
+          this.finishJob(job, `The model was built but could not be added to the library: ${err.message}`);
+        }
+      },
+
+      addVersionCard(sub) {
+        const list = this.el('i3d-versions');
+        list.classList.remove('hidden');
+        const card = document.createElement('div');
+        card.className = 'rounded-xl border border-slate-800 bg-slate-950/60 p-2.5';
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-2 text-[11px]">
+            <span class="font-semibold text-slate-200 truncate">Version ${sub.round} · ${escapeHTML(sub.title)}</span>
+            <span data-state class="mono text-slate-400 shrink-0">building…</span>
+          </div>
+          <p class="mt-1 text-[11px] text-slate-400 leading-relaxed line-clamp-3" title="${escapeHTML(sub.notes)}">${escapeHTML(sub.notes)}</p>
+          <div data-views class="mt-2 flex flex-wrap gap-1.5"></div>`;
+        list.appendChild(card);
+        return card;
+      },
+
+      updateVersionCard(card, report, build) {
+        const badge = card.querySelector('[data-state]');
+        if (report.ok) {
+          badge.textContent = `${report.stats.meshes} meshes · ${Math.round(report.stats.triangles / 1000)}k tris`;
+          badge.className = 'mono text-emerald-300 shrink-0';
+          card.querySelector('[data-views]').innerHTML = build.views
+            .map((v) => `<img src="${escapeHTML(v.dataUrl)}" alt="${escapeHTML(v.label)}" title="${escapeHTML(v.label)}" class="w-14 h-14 rounded-md border border-slate-700 object-cover" />`)
+            .join('');
+        } else {
+          badge.textContent = 'build error';
+          badge.className = 'mono text-rose-300 shrink-0';
+          card.querySelector('[data-views]').innerHTML = `<p class="text-[11px] mono text-rose-200/90 break-words whitespace-pre-wrap">${escapeHTML(report.error)}</p>`;
+        }
+      },
+
+      showLive(text) {
+        const el = this.el('i3d-live');
+        const snippet = String(text || '').trim();
+        el.textContent = snippet.length > 280 ? `…${snippet.slice(-280)}` : snippet;
+        el.classList.toggle('hidden', !snippet);
+      },
+
+      showCost(state) {
+        const usage = state.usage || {};
+        const tokens = (usage.input || 0) + (usage.output || 0) + (usage.cacheRead || 0) + (usage.cacheWrite || 0);
+        this.el('i3d-cost').textContent = Number.isFinite(state.costUsd)
+          ? `≈ $${state.costUsd.toFixed(2)} so far`
+          : tokens
+            ? `${Math.round(tokens / 1000)}k tokens`
+            : '';
+      },
+
       finishJob(job, error) {
         if (this.job !== job) return;
         this.job = null;
         this.setRunning(false);
         if (error) {
           this.showError(error);
-          if (!this.isOpen()) showToast(`Image → 3D failed: ${error}`, 6000);
+          if (!this.isOpen()) showToast(`${job.provider === 'ai-builder' ? 'AI Builder' : 'Image → 3D'} failed: ${error}`, 6000);
         } else if (this.isOpen()) {
           this.close();
         }
@@ -5483,7 +5911,9 @@
         const job = this.job;
         if (!job) return;
         job.cancelled = true;
-        if (job.id) fetch(`api/image-to-3d/${job.id}`, { method: 'DELETE', headers: { 'X-Studio-Client': '1' } }).catch(() => {});
+        const route = job.provider === 'ai-builder' ? 'ai-builder' : 'image-to-3d';
+        if (job.id) fetch(`api/${route}/${job.id}`, { method: 'DELETE', headers: { 'X-Studio-Client': '1' } }).catch(() => {});
+        if (job.provider === 'ai-builder') BuildSandbox.abort();
         this.finishJob(job, null);
         this.showError('Generation cancelled.');
       },
@@ -5525,13 +5955,21 @@
           this.nameEdited = this.el('i3d-name').value.trim() !== '';
         });
         document.querySelectorAll('[data-i3d-tab]').forEach((btn) => btn.addEventListener('click', () => this.showTab(btn.dataset.i3dTab)));
-        this.el('i3d-file').addEventListener('change', (e) => this.setImageFile(e.target.files[0]));
+        this.el('i3d-file').addEventListener('change', (e) => {
+          this.addPhotos(e.target.files);
+          e.target.value = '';
+        });
         this.el('i3d-glb-file').addEventListener('change', (e) => {
           this.importFile(e.target.files[0]);
           e.target.value = '';
         });
+        this.el('i3d-thumbs').addEventListener('click', (e) => {
+          const remove = e.target.closest('[data-remove-photo]');
+          if (remove) this.removePhoto(Number(remove.dataset.removePhoto));
+          else if (e.target.closest('[data-add-photo]')) this.el('i3d-file').click();
+        });
 
-        [['i3d-drop', (f) => this.setImageFile(f)], ['i3d-glb-drop', (f) => this.importFile(f)]].forEach(([id, handle]) => {
+        [['i3d-drop', (files) => this.addPhotos(files)], ['i3d-glb-drop', (files) => this.importFile(files[0])]].forEach(([id, handle]) => {
           const zone = this.el(id);
           zone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -5541,14 +5979,14 @@
           zone.addEventListener('drop', (e) => {
             e.preventDefault();
             zone.classList.remove('border-fuchsia-400');
-            if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]);
+            if (e.dataTransfer.files.length) handle(e.dataTransfer.files);
           });
         });
 
         document.addEventListener('paste', (e) => {
           if (!this.isOpen() || this.tab !== 'generate' || !e.clipboardData) return;
           const item = Array.from(e.clipboardData.items).find((i) => /^image\//.test(i.type));
-          if (item) this.setImageFile(item.getAsFile());
+          if (item) this.addPhotos([item.getAsFile()]);
         });
         document.addEventListener('keydown', (e) => {
           if (e.key === 'Escape' && this.isOpen()) this.close();
@@ -5558,6 +5996,442 @@
         });
       }
     };
+
+    // ============================================================================
+    // 9C. AI BUILDER SANDBOX & STUDIO RENDERS
+    // ============================================================================
+    // The AI Builder's code runs in a dedicated worker inside a sandboxed iframe: an opaque origin with no
+    // access to this page, its storage or the studio server, and a CSP that blocks every network request.
+    // The worker loads the same three.js build and toolkit script as this page, runs buildModel(),
+    // exports the result as .glb and is thrown away after each build, so a runaway loop just times out.
+    const SANDBOX_CSP =
+      "default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; connect-src 'none'; " +
+      "img-src blob: data:; font-src 'none'; style-src 'none'; base-uri 'none'; form-action 'none'";
+
+    // Runs in the sandbox iframe: starts one worker per build and enforces the time limit
+    function sandboxFrameMain() {
+      let workerUrl = null;
+      let worker = null;
+      let timer = null;
+      let currentId = null;
+      const reply = (message, transfer) => parent.postMessage(message, '*', transfer || []);
+      const finish = (result, transfer) => {
+        if (currentId === null) return;
+        const id = currentId;
+        currentId = null;
+        clearTimeout(timer);
+        if (worker) worker.terminate();
+        worker = null;
+        reply({ ...result, type: 'result', id }, transfer);
+      };
+      window.addEventListener('message', (event) => {
+        if (event.source !== parent) return;
+        const msg = event.data || {};
+        if (msg.type === 'init') {
+          if (workerUrl) URL.revokeObjectURL(workerUrl);
+          workerUrl = URL.createObjectURL(new Blob([msg.source], { type: 'text/javascript' }));
+          reply({ type: 'ready' });
+        } else if (msg.type === 'build') {
+          finish({ ok: false, error: 'Superseded by a newer build' });
+          currentId = msg.id;
+          worker = new Worker(workerUrl);
+          worker.onmessage = (e) => finish(e.data, e.data && e.data.glb ? [e.data.glb] : []);
+          worker.onerror = (e) => {
+            e.preventDefault();
+            finish({ ok: false, error: e.message || 'The build script crashed' });
+          };
+          timer = setTimeout(
+            () => finish({ ok: false, error: `The build did not finish within ${Math.round(msg.timeoutMs / 1000)} seconds (an endless loop, or far too much geometry?)` }),
+            msg.timeoutMs
+          );
+          worker.postMessage({ code: msg.code, meta: msg.meta });
+        } else if (msg.type === 'abort') {
+          finish({ ok: false, error: 'Cancelled' });
+        }
+      });
+      reply({ type: 'loaded' });
+    }
+
+    // Runs in the worker before three.js: canvases become OffscreenCanvases; nothing else from the DOM exists
+    function sandboxWorkerPrelude() {
+      self.window = self;
+      self.document = {
+        createElement(tag) {
+          if (String(tag).toLowerCase() !== 'canvas') {
+            throw new Error(`document.createElement('${tag}') is not available in the AI Builder sandbox (only 'canvas' is)`);
+          }
+          return new OffscreenCanvas(1, 1);
+        },
+        createElementNS(ns, tag) {
+          return self.document.createElement(tag);
+        }
+      };
+      // GLTFExporter encodes embedded textures with canvas.toBlob. Pass toBlob's default JPEG quality
+      // explicitly: convertToBlob would otherwise encode at a far larger size.
+      OffscreenCanvas.prototype.toBlob = function (callback, type, quality = 0.92) {
+        this.convertToBlob({ type, quality }).then(callback, () => callback(null));
+      };
+    }
+
+    // Runs in the worker after the toolkit: loads the submitted code, builds and inspects the model and
+    // exports it with the same exporter setup as the studio's Export button
+    function sandboxWorkerHarness() {
+      const loadScript = self.importScripts.bind(self);
+      // The CSP already blocks the network; removing the APIs as well makes attempts fail loudly and keeps
+      // the worker inert in browsers that apply CSP to workers differently
+      ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'importScripts', 'FontFace', 'WebTransport', 'Worker', 'SharedWorker', 'BroadcastChannel', 'indexedDB', 'caches'].forEach((name) => {
+        for (let scope = self; scope; scope = Object.getPrototypeOf(scope)) {
+          if (!Object.prototype.hasOwnProperty.call(scope, name)) continue;
+          try {
+            delete scope[name];
+          } catch (err) {
+            // not configurable here; the CSP still applies
+          }
+        }
+      });
+
+      const logs = [];
+      const describeValue = (value) => {
+        if (value instanceof Error) return value.message;
+        if (value === null || typeof value !== 'object') return String(value);
+        if (value.isObject3D || value.isMaterial || value.isBufferGeometry || value.isTexture) {
+          return `${value.type || 'object'}${value.name ? ` "${value.name}"` : ''}`;
+        }
+        try {
+          return JSON.stringify(value).slice(0, 200);
+        } catch (err) {
+          return Object.prototype.toString.call(value);
+        }
+      };
+      const capture = (level) => (...args) => {
+        if (logs.length < 40) logs.push(`${level}: ${args.map(describeValue).join(' ').slice(0, 300)}`);
+      };
+      console.log = console.info = console.debug = capture('log');
+      console.warn = capture('warn');
+      console.error = capture('error');
+
+      // Point at the generated code's own lines: stack frames from the code's blob URL carry exact positions
+      const describeError = (err, codeUrl, code) => {
+        const message = err && err.message ? `${err.name || 'Error'}: ${err.message}` : String(err);
+        const lines = code.split('\n');
+        const where = [];
+        for (const frame of String((err && err.stack) || '').split('\n')) {
+          if (!frame.includes(codeUrl)) continue;
+          const pos = /:(\d+):\d+\)?\s*$/.exec(frame);
+          if (!pos) continue;
+          const n = Number(pos[1]);
+          const fn = (/^\s*at\s+([\w$.]+)\s+\(/.exec(frame) || [])[1];
+          where.push(`line ${n}${fn ? ` in ${fn}()` : ''}: ${String(lines[n - 1] || '').trim().slice(0, 160)}`);
+          if (where.length === 3) break;
+        }
+        return where.length ? `${message}\n  at ${where.join('\n  called from ')}` : message;
+      };
+
+      const round = (v) => Math.round(v * 1000) / 1000;
+      const inspect = (root) => {
+        root.updateMatrixWorld(true);
+        let meshes = 0;
+        let triangles = 0;
+        let emptyMeshes = 0;
+        let nonFinite = 0;
+        let unsupported = 0;
+        let explodeParts = 0;
+        const materials = new Set();
+        const textures = new Set();
+        root.traverse((node) => {
+          if (node.userData && node.userData.explodeVec) explodeParts++;
+          if (node.isInstancedMesh || node.isPoints || node.isLine || node.isSprite || node.isSkinnedMesh) unsupported++;
+          if (!node.isMesh) return;
+          meshes++;
+          const position = node.geometry && node.geometry.attributes && node.geometry.attributes.position;
+          if (!position || position.count === 0) {
+            emptyMeshes++;
+            return;
+          }
+          triangles += Math.floor((node.geometry.index ? node.geometry.index.count : position.count) / 3);
+          const array = position.array;
+          for (let i = 0; i < array.length; i++) {
+            if (!Number.isFinite(array[i])) {
+              nonFinite++;
+              break;
+            }
+          }
+          (Array.isArray(node.material) ? node.material : [node.material]).forEach((m) => {
+            if (!m) return;
+            materials.add(m);
+            ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'alphaMap'].forEach((key) => m[key] && textures.add(m[key]));
+          });
+        });
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.isEmpty() ? new THREE.Vector3() : box.getSize(new THREE.Vector3());
+        const centre = box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+        const parts = root.children.slice(0, 30).map((child) => {
+          let count = 0;
+          child.traverse((n) => n.isMesh && count++);
+          const v = child.userData.explodeVec;
+          return { name: child.name || '(unnamed)', meshes: count, explode: v ? [round(v.x), round(v.y), round(v.z)] : null };
+        });
+
+        const warnings = [];
+        const largest = Math.max(size.x, size.y, size.z);
+        if (emptyMeshes) warnings.push(`${emptyMeshes} mesh(es) have no vertices`);
+        if (nonFinite) warnings.push(`${nonFinite} mesh(es) contain NaN/Infinity vertex positions (check divisions and undefined numbers)`);
+        if (unsupported) warnings.push(`${unsupported} InstancedMesh/Points/Line/Sprite object(s): build everything from ordinary Meshes (share geometry with CAD.shared instead of instancing)`);
+        if (largest < 0.4 || largest > 4) warnings.push(`largest dimension is ${round(largest)} units; the studio convention is about 1.6`);
+        if (centre.length() > Math.max(0.25, largest * 0.25)) warnings.push(`the model is centred at (${round(centre.x)}, ${round(centre.y)}, ${round(centre.z)}), not near the origin`);
+        if (triangles > 1500000) warnings.push(`${triangles} triangles is very heavy: lower segment counts or share geometry`);
+        if (meshes > 4000) warnings.push(`${meshes} meshes is a lot for one model: group repeated details or merge tiny parts`);
+        if (root.children.length > 1 && explodeParts === 0) warnings.push('no part has an exploded-view offset (setExplodeOffset)');
+        if (parts.some((p) => p.name === '(unnamed)')) warnings.push('some top-level parts have no name');
+        return {
+          meshes,
+          triangles,
+          materials: materials.size,
+          textures: textures.size,
+          size: [round(size.x), round(size.y), round(size.z)],
+          centre: [round(centre.x), round(centre.y), round(centre.z)],
+          parts,
+          warnings
+        };
+      };
+
+      // Title, summary and callouts come from the AI Builder's submission or, for code written in Claude Code,
+      // from a top-level MODEL_INFO object; they travel inside the .glb with the code itself
+      const modelInfo = (meta) => {
+        const raw = meta || (typeof MODEL_INFO === 'object' && MODEL_INFO) || {}; // eslint-disable-line no-undef
+        const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');
+        return {
+          title: text(raw.title, 80),
+          subtitle: text(raw.subtitle, 140),
+          summary: text(raw.summary, 600),
+          callouts: (Array.isArray(raw.callouts) ? raw.callouts : [])
+            .filter((c) => c && Array.isArray(c.pos) && c.pos.length === 3 && c.pos.every(Number.isFinite))
+            .slice(0, 8)
+            .map((c) => ({ pos: c.pos.map(Number), tag: text(c.tag, 60), desc: text(c.desc, 400) }))
+        };
+      };
+
+      const exportGLB = (root) =>
+        new Promise((resolve, reject) => {
+          const exporter = new THREE.GLTFExporter();
+          exporter.register(ClearcoatExportPlugin);
+          exporter.parse(root, (result) => (result instanceof ArrayBuffer ? resolve(result) : reject(new Error('The exporter did not produce a binary .glb'))), { binary: true });
+        });
+
+      self.onmessage = async (event) => {
+        const code = String((event.data && event.data.code) || '');
+        const meta = (event.data && event.data.meta) || null;
+        const codeUrl = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+        const started = performance.now();
+        try {
+          loadScript(codeUrl);
+          // Reads the global the generated script declared (function, const or let)
+          const build = typeof buildModel === 'function' ? buildModel : null; // eslint-disable-line no-undef
+          if (!build) throw new Error('The code must define a top-level function buildModel() that returns the model');
+          const root = build();
+          if (root && typeof root.then === 'function') throw new Error('buildModel() must build synchronously and return the model, not a Promise');
+          if (!root || !root.isObject3D) throw new Error('buildModel() must return a THREE.Group (or another THREE.Object3D)');
+          const buildMs = Math.round(performance.now() - started);
+          const stats = inspect(root);
+          if (stats.meshes === 0) throw new Error('buildModel() returned a model with no meshes');
+          const info = modelInfo(meta);
+          root.userData.aiBuilder = { ...info, code };
+          const glb = await exportGLB(root);
+          if (glb.byteLength > 150 * 1024 * 1024) throw new Error(`The exported .glb is ${Math.round(glb.byteLength / 1048576)} MB; keep models under 150 MB`);
+          postMessage({ ok: true, glb, stats, info, logs, buildMs }, [glb]);
+        } catch (err) {
+          postMessage({ ok: false, error: describeError(err, codeUrl, code), logs });
+        }
+      };
+    }
+
+    const BuildSandbox = {
+      frame: null,
+      ready: null,
+      pending: null,
+      nextId: 1,
+      timeoutMs: 90000,
+
+      // The page's own three.js and exporter builds (fetched again, normally from the browser cache) plus
+      // the toolkit script, concatenated into the worker's source
+      async workerSource() {
+        const scriptText = async (needle) => {
+          const tag = Array.from(document.scripts).find((s) => s.src && s.src.includes(needle));
+          if (!tag) throw new Error(`the page has no ${needle} script`);
+          const res = await fetch(tag.src);
+          if (!res.ok) throw new Error(`could not load ${needle} (HTTP ${res.status})`);
+          return res.text();
+        };
+        const [three, exporter] = await Promise.all([scriptText('three.min.js'), scriptText('GLTFExporter.js')]);
+        const toolkit = document.getElementById('studio-toolkit').textContent;
+        return [`(${sandboxWorkerPrelude})();`, three, exporter, 'var renderer = null;', toolkit, `(${sandboxWorkerHarness})();`].join('\n;\n');
+      },
+
+      prepare() {
+        if (!this.ready) {
+          this.ready = (async () => {
+            const source = await this.workerSource();
+            const frame = document.createElement('iframe');
+            frame.setAttribute('sandbox', 'allow-scripts');
+            frame.setAttribute('aria-hidden', 'true');
+            frame.tabIndex = -1;
+            frame.style.display = 'none';
+            frame.srcdoc =
+              `<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${SANDBOX_CSP}">` +
+              `<script>(${sandboxFrameMain})();<\/script>`;
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(() => {
+                window.removeEventListener('message', onMessage);
+                reject(new Error('the build sandbox did not start'));
+              }, 20000);
+              const onMessage = (event) => {
+                if (event.source !== frame.contentWindow || !event.data) return;
+                if (event.data.type === 'loaded') frame.contentWindow.postMessage({ type: 'init', source }, '*');
+                if (event.data.type === 'ready') {
+                  clearTimeout(timer);
+                  window.removeEventListener('message', onMessage);
+                  resolve();
+                }
+              };
+              window.addEventListener('message', onMessage);
+              document.body.appendChild(frame);
+            });
+            window.addEventListener('message', (event) => {
+              if (event.source !== frame.contentWindow || !event.data || event.data.type !== 'result') return;
+              const pending = this.pending;
+              if (!pending || pending.id !== event.data.id) return;
+              this.settle(event.data);
+            });
+            this.frame = frame;
+          })();
+          this.ready.catch(() => this.reset());
+        }
+        return this.ready;
+      },
+
+      settle(result) {
+        const pending = this.pending;
+        if (!pending) return;
+        this.pending = null;
+        clearTimeout(pending.watchdog);
+        pending.resolve(result);
+      },
+
+      // Drops the iframe so the next build starts a fresh sandbox
+      reset() {
+        if (this.frame) this.frame.remove();
+        this.frame = null;
+        this.ready = null;
+      },
+
+      // `meta` (title, subtitle, summary, callouts) is embedded in the .glb with the code
+      async build(code, meta = null) {
+        await this.prepare();
+        this.settle({ ok: false, error: 'Superseded by a newer build' });
+        const id = this.nextId++;
+        return new Promise((resolve) => {
+          // The iframe enforces the time limit; this only fires if the sandbox itself stops responding
+          const watchdog = setTimeout(() => {
+            this.settle({ ok: false, error: 'The build sandbox stopped responding' });
+            this.reset();
+          }, this.timeoutMs + 15000);
+          this.pending = { id, resolve, watchdog };
+          this.frame.contentWindow.postMessage({ type: 'build', id, code, meta, timeoutMs: this.timeoutMs }, '*');
+        });
+      },
+
+      abort() {
+        if (this.frame) this.frame.contentWindow.postMessage({ type: 'abort' }, '*');
+      }
+    };
+
+    // Fixed studio angles shown to Claude after every version. Directions point from the model to the
+    // camera: +Z is the object's front, +X its right side, +Y up.
+    const BUILD_VIEWS = [
+      { key: 'front-right', label: 'front-right three-quarter view, from above', dir: [1, 0.62, 1.25] },
+      { key: 'front', label: 'front view (looking at the +Z face)', dir: [0, 0.06, 1] },
+      { key: 'right', label: 'right side view (looking at the +X face)', dir: [1, 0.06, 0] },
+      { key: 'top', label: 'top view (looking down at the +Y face, front at the bottom)', dir: [0, 1, 0] },
+      { key: 'rear-left', label: 'rear-left three-quarter view, from above', dir: [-1, 0.55, -1.2] }
+    ];
+
+    // Render a model on its own in the bright photo studio from each BUILD_VIEWS angle, synchronously, then
+    // put the viewport back exactly as it was (the user never sees the swap)
+    function captureModelViews(object, size = 640) {
+      const saved = {
+        modelVisible: currentModelGroup ? currentModelGroup.visible : false,
+        background: scene.background,
+        environment: scene.environment,
+        grid: gridHelper.visible,
+        floorOpacity: shadowFloor.material.opacity,
+        position: camera.position.clone(),
+        quaternion: camera.quaternion.clone(),
+        aspect: camera.aspect,
+        pixelRatio: renderer.getPixelRatio(),
+        size: renderer.getSize(new THREE.Vector2())
+      };
+      const shots = [];
+      try {
+        if (currentModelGroup) currentModelGroup.visible = false;
+        scene.add(object);
+        prepareModelForStudio(object);
+        scene.environment = studioEnvironments.white;
+        scene.background = new THREE.Color(0xd5d8dd);
+        gridHelper.visible = false;
+        shadowFloor.material.opacity = 0.3;
+        renderer.setPixelRatio(1);
+        renderer.setSize(size, size, false);
+        camera.aspect = 1;
+        camera.updateProjectionMatrix();
+
+        const sphere = new THREE.Box3().setFromObject(object).getBoundingSphere(new THREE.Sphere());
+        const distance = (sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))) * 1.04;
+        BUILD_VIEWS.forEach((view) => {
+          const dir = new THREE.Vector3(...view.dir).normalize();
+          camera.up.set(0, 1, 0);
+          if (view.key === 'top') camera.up.set(0, 0, -1);
+          camera.position.copy(sphere.center).addScaledVector(dir, distance);
+          camera.lookAt(sphere.center);
+          renderer.render(scene, camera);
+          shots.push({ key: view.key, label: view.label, dataUrl: renderer.domElement.toDataURL('image/jpeg', 0.86) });
+        });
+      } finally {
+        scene.remove(object);
+        camera.up.set(0, 1, 0);
+        camera.position.copy(saved.position);
+        camera.quaternion.copy(saved.quaternion);
+        camera.aspect = saved.aspect;
+        camera.updateProjectionMatrix();
+        renderer.setPixelRatio(saved.pixelRatio);
+        renderer.setSize(saved.size.x, saved.size.y, false);
+        scene.background = saved.background;
+        scene.environment = saved.environment;
+        gridHelper.visible = saved.grid;
+        shadowFloor.material.opacity = saved.floorOpacity;
+        if (currentModelGroup) {
+          currentModelGroup.visible = saved.modelVisible;
+          fitStudioToModel(currentModelGroup);
+        }
+        renderer.render(scene, camera);
+      }
+      return shots;
+    }
+
+    function thumbnailFromDataUrl(dataUrl, size = 160) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const side = Math.min(img.width, img.height);
+          canvas.getContext('2d').drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+      });
+    }
 
     // ============================================================================
     // 10. ANIMATION LOOP & WINDOW.ONLOAD STARTUP
