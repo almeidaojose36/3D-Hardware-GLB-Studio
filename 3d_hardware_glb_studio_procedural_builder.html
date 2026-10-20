@@ -1,0 +1,3291 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D PC Hardware Procedural GLB Studio & Exporter</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Three.js r128 Core, OrbitControls, and GLTFExporter -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0b0e14;
+      color: #e2e8f0;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    #viewport-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 50% 38%, #263147 0%, #111622 55%, #090c12 100%);
+    }
+    #viewport-container.light-studio {
+      background: radial-gradient(circle at 50% 35%, #ffffff 0%, #e2e8f0 65%, #cbd5e1 100%);
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
+    }
+    /* 3D Classroom Training Callout Badges */
+    .callout-pin {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      pointer-events: auto;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.2s ease;
+      z-index: 15;
+    }
+    .callout-pin:hover {
+      transform: translate(-50%, -50%) scale(1.08);
+      z-index: 30;
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f141c;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #2d3748;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4a5568;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #1e293b;
+      height: 6px;
+      border-radius: 999px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      border: 2px solid #0f172a;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+    }
+  </style>
+</head>
+
+<body class="h-screen w-screen flex flex-col bg-[#0b0e14] text-slate-100 overflow-hidden">
+
+  <!-- Top Navigation & Export Bar -->
+  <header class="h-14 border-b border-slate-800/80 bg-[#0f131c]/95 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-20">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
+        </svg>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-semibold text-sm md:text-base tracking-tight text-white">Classroom 3D PC Hardware CAD & GLB Studio</h1>
+          <span class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-full mono">High-Detail CAD PBR</span>
+        </div>
+        <p class="text-[11px] text-slate-400 hidden sm:block">Beveled CAD geometry, 1024px PBR maps, interactive training callouts & binary .GLB export</p>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex items-center gap-2">
+      <button id="btn-source-modal" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+        </svg>
+        <span class="hidden md:inline">Editable</span> Source
+      </button>
+
+      <button id="btn-export-current-glb" class="px-3.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white shadow-lg shadow-sky-600/25 transition flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        <span>Export <span id="export-btn-filename" class="mono">Case_Fan.glb</span></span>
+      </button>
+
+      <button id="btn-export-all-glb" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+        <span class="hidden sm:inline">Batch Export All 9 (.GLB)</span>
+        <span class="sm:hidden">All 9</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+
+    <!-- Left Sidebar: 9 Hardware Assets Selector -->
+    <aside class="w-full lg:w-72 bg-[#0f131c] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col shrink-0 z-10 max-h-44 lg:max-h-full">
+      <div class="p-3 border-b border-slate-800/80 flex items-center justify-between">
+        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">9 Classroom Models</span>
+        <button id="btn-view-all-grid" class="px-2 py-0.5 rounded bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-[11px] font-medium text-indigo-300 transition">
+          9-Up Lab Kit
+        </button>
+      </div>
+      <div id="asset-list" class="flex lg:flex-col overflow-x-auto lg:overflow-y-auto p-2 gap-1.5 flex-1">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </aside>
+
+    <!-- Center 3D Viewport -->
+    <main class="flex-1 relative flex flex-col overflow-hidden">
+      <div id="viewport-container" class="flex-1 relative overflow-hidden">
+        <!-- 3D Classroom Callout Pins Overlay Container -->
+        <div id="callout-overlay" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+        <!-- Top-Left Viewport HUD Overlay -->
+        <div class="absolute top-3 left-3 z-20 pointer-events-none flex flex-col gap-1.5 max-w-xs sm:max-w-md">
+          <div class="bg-[#0f131c]/90 backdrop-blur-md border border-slate-800/90 rounded-xl px-3.5 py-2.5 shadow-xl">
+            <div class="flex items-center gap-2">
+              <span id="hud-model-title" class="font-bold text-sm text-white mono">Case_Fan.glb</span>
+              <span class="px-1.5 py-0.5 text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 rounded mono">CAD Beveled PBR</span>
+            </div>
+            <p id="hud-model-desc" class="text-xs text-slate-300 mt-0.5">120mm Cooling Fan with Swept Airfoil Impeller, Corner Ribs & Keyed 2-Pin Lead</p>
+            <div class="flex items-center gap-4 mt-2 pt-2 border-t border-slate-800/80 text-[11px] mono text-slate-300">
+              <div>Meshes: <span id="hud-mesh-count" class="text-sky-400 font-semibold">0</span></div>
+              <div>Triangles: <span id="hud-tri-count" class="text-sky-400 font-semibold">0</span></div>
+              <div>Vertices: <span id="hud-vert-count" class="text-sky-400 font-semibold">0</span></div>
+            </div>
+          </div>
+
+          <!-- Active Classroom Callout Lesson Card -->
+          <div id="hud-lesson-card" class="bg-indigo-950/90 backdrop-blur-md border border-indigo-500/40 rounded-xl px-3.5 py-2.5 text-xs text-indigo-100 shadow-xl pointer-events-auto">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-300 mono">Classroom Training Note</span>
+              <span id="lesson-part-tag" class="px-1.5 py-0.5 rounded bg-indigo-500/30 text-[10px] mono text-white">Click any numbered pin</span>
+            </div>
+            <p id="lesson-part-desc" class="text-[11px] text-slate-200 leading-relaxed">
+              Use the numbered 3D pins or the Exploded View slider below to inspect internal hardware anatomy, pinouts, and mechanical assembly points.
+            </p>
+          </div>
+
+          <!-- Selected Sub-Mesh Pill -->
+          <div id="hud-selected-pill" class="hidden bg-sky-950/85 backdrop-blur-md border border-sky-500/40 rounded-lg px-3 py-1.5 text-xs text-sky-200 mono shadow-lg">
+            Selected Node: <span id="hud-selected-name" class="font-semibold text-white">None</span>
+          </div>
+        </div>
+
+        <!-- Top-Right Camera, Classroom Callouts & Studio Backdrop Controls -->
+        <div class="absolute top-3 right-3 z-20 flex flex-wrap items-center justify-end gap-1.5 max-w-md">
+          <button id="btn-toggle-callouts" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-indigo-500/50 text-xs font-medium text-indigo-200 transition flex items-center gap-1.5 shadow-lg">
+            <span>Training Labels</span>
+            <span id="callouts-badge" class="w-2 h-2 rounded-full bg-indigo-400 shadow-sm shadow-indigo-400"></span>
+          </button>
+          <button id="btn-toggle-backdrop" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 text-xs font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span id="backdrop-label">White Photo Studio</span>
+          </button>
+          <button id="btn-toggle-wireframe" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 text-xs font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>Wireframe</span>
+            <span id="wireframe-badge" class="w-2 h-2 rounded-full bg-slate-600"></span>
+          </button>
+          <button id="btn-toggle-animate" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 text-xs font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>Animate</span>
+            <span id="animate-badge" class="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400"></span>
+          </button>
+          <button id="btn-toggle-turntable" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 text-xs font-medium text-slate-200 transition flex items-center gap-1.5">
+            <span>Turntable</span>
+            <span id="turntable-badge" class="w-2 h-2 rounded-full bg-slate-600"></span>
+          </button>
+          <button id="btn-reset-camera" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 text-xs font-medium text-slate-200 transition">
+            Reset View
+          </button>
+        </div>
+
+        <!-- Bottom Floating Exploded-View & Lighting Bar -->
+        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-xl bg-[#0f131c]/90 backdrop-blur-md border border-slate-800/90 rounded-2xl px-4 py-3 shadow-2xl flex flex-col sm:flex-row items-center gap-4">
+          <div class="flex-1 w-full">
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-medium text-slate-300 flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+                Classroom Exploded Disassembly View
+              </span>
+              <span id="explode-val" class="mono text-sky-400 font-semibold">0%</span>
+            </div>
+            <input id="slider-explode" type="range" min="0" max="100" value="0" class="w-full" />
+          </div>
+
+          <div class="w-full sm:w-40 border-t sm:border-t-0 sm:border-l border-slate-800 pt-2 sm:pt-0 sm:pl-4">
+            <div class="flex justify-between text-xs mb-1">
+              <span class="font-medium text-slate-300">Studio Exposure</span>
+              <span id="exposure-val" class="mono text-slate-400">1.25</span>
+            </div>
+            <input id="slider-exposure" type="range" min="50" max="220" value="125" class="w-full" />
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Sidebar: Sub-Mesh Hierarchy & Live PBR Material Editor -->
+    <aside class="w-full lg:w-80 bg-[#0f131c] border-t lg:border-t-0 lg:border-l border-slate-800/80 flex flex-col shrink-0 z-10 max-h-64 lg:max-h-full overflow-y-auto">
+      
+      <!-- Sub-Mesh Hierarchy Section -->
+      <div class="p-3 border-b border-slate-800/80 flex items-center justify-between">
+        <div>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">GLB Node Hierarchy</h2>
+          <p class="text-[11px] text-slate-500">Click any sub-mesh to inspect or edit PBR</p>
+        </div>
+        <button id="btn-show-all-nodes" class="text-[11px] text-sky-400 hover:text-sky-300 font-medium">Show All</button>
+      </div>
+
+      <div id="hierarchy-tree" class="p-2 space-y-1 max-h-60 lg:max-h-72 overflow-y-auto border-b border-slate-800/80">
+        <!-- Populated dynamically -->
+      </div>
+
+      <!-- Live PBR Material Editor -->
+      <div class="p-3.5 flex-1 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Live PBR Material Editor</h2>
+          <span id="mat-editor-name" class="text-[11px] mono text-sky-400 truncate max-w-[140px]">Select a node</span>
+        </div>
+
+        <div id="pbr-controls" class="space-y-3">
+          <!-- Base Color -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <label class="text-slate-300">Base Color (Albedo)</label>
+              <span id="mat-color-hex" class="mono text-slate-400">#1a1a1a</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="input-mat-color" type="color" value="#1a1a1a" class="w-8 h-7 rounded bg-slate-900 border border-slate-700 cursor-pointer" />
+              <span class="text-[11px] text-slate-400">Updates GLB material slot live</span>
+            </div>
+          </div>
+
+          <!-- Metalness -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <label class="text-slate-300">Metalness</label>
+              <span id="val-mat-metalness" class="mono text-sky-400">0.10</span>
+            </div>
+            <input id="slider-mat-metalness" type="range" min="0" max="100" value="10" class="w-full" />
+          </div>
+
+          <!-- Roughness -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <label class="text-slate-300">Roughness</label>
+              <span id="val-mat-roughness" class="mono text-sky-400">0.55</span>
+            </div>
+            <input id="slider-mat-roughness" type="range" min="0" max="100" value="55" class="w-full" />
+          </div>
+
+          <!-- Bump / Micro-Surface Intensity -->
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <label class="text-slate-300">Surface Relief / Normal</label>
+              <span id="val-mat-bump" class="mono text-sky-400">1.00</span>
+            </div>
+            <input id="slider-mat-bump" type="range" min="0" max="200" value="100" class="w-full" />
+          </div>
+        </div>
+
+        <!-- Export Options Card -->
+        <div class="mt-auto pt-3 border-t border-slate-800/80 space-y-2">
+          <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
+            <div class="text-xs font-semibold text-white mb-1">Three.js Loader Compatibility</div>
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              Exported <code class="text-sky-400 mono">.glb</code> files embed all sub-mesh names, pivot origins, and procedural PBR textures for direct <code class="text-emerald-400 mono">GLTFLoader</code> use.
+            </p>
+            <button id="btn-export-gltf-json" class="mt-2.5 w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition">
+              Export Editable .GLTF (JSON)
+            </button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden bg-slate-900/95 border border-sky-500/40 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 backdrop-blur-md">
+    <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+    <span id="toast-msg" class="text-xs font-medium mono">Exporting Case_Fan.glb...</span>
+  </div>
+
+  <!-- Editable Source Code Modal -->
+  <div id="source-modal" class="fixed inset-0 z-50 hidden bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-[#0f131c] border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 class="font-semibold text-sm text-white">Editable Procedural Three.js Source & GLTFLoader Snippet</h3>
+          <p class="text-xs text-slate-400">Modify dimensions, blade counts, fin stacks, or load the exported .glb files in your project</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-copy-source" class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-xs font-semibold text-white transition">
+            Copy Code
+          </button>
+          <button id="btn-close-modal" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <pre id="source-code-content" class="p-5 text-xs mono text-slate-300 overflow-auto flex-1 bg-[#090c12] leading-relaxed select-all"></pre>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // 1. HIGH-RESOLUTION 1024px PROCEDURAL PBR TEXTURE ENGINE (Baked for GLB)
+    // ============================================================================
+    const ProceduralTextures = {
+      cache: {},
+
+      // 1A. Anisotropic Linear Brushed Nickel / Stainless / Aluminum Texture
+      getBrushedMetal() {
+        if (this.cache.brushedMetal) return this.cache.brushedMetal;
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+
+        const grad = ctx.createLinearGradient(0, 0, 1024, 1024);
+        grad.addColorStop(0, '#dcdfe4');
+        grad.addColorStop(0.5, '#eef1f6');
+        grad.addColorStop(1, '#d2d7df');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 1024, 1024);
+
+        // Micro-machined directional brush strokes
+        for (let i = 0; i < 14000; i++) {
+          const x = Math.random() * 1024;
+          const y = Math.random() * 1024;
+          const len = 45 + Math.random() * 220;
+          const lum = 175 + Math.floor(Math.random() * 75);
+          ctx.strokeStyle = `rgba(${lum}, ${lum + 2}, ${lum + 5}, 0.22)`;
+          ctx.lineWidth = 0.6 + Math.random() * 1.1;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + len, y + (Math.random() - 0.5) * 0.8);
+          ctx.stroke();
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        this.cache.brushedMetal = tex;
+        return tex;
+      },
+
+      // 1B. High-Detail Green Solder-Mask PCB with Copper Bus Traces, Silkscreen & Gold Vias
+      getGreenPCB() {
+        if (this.cache.greenPCB) return this.cache.greenPCB;
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+
+        // Rich fiberglass emerald green base
+        ctx.fillStyle = '#0c5927';
+        ctx.fillRect(0, 0, 1024, 1024);
+
+        // Subtle fiberglass weave grid
+        ctx.strokeStyle = 'rgba(22, 118, 55, 0.25)';
+        ctx.lineWidth = 1;
+        for (let g = 0; g < 1024; g += 8) {
+          ctx.beginPath();
+          ctx.moveTo(g, 0);
+          ctx.lineTo(g, 1024);
+          ctx.stroke();
+        }
+
+        // High-density 45-degree serpentine copper bus traces under solder mask
+        ctx.strokeStyle = '#1d8a43';
+        ctx.lineWidth = 2.2;
+        for (let bus = 0; bus < 45; bus++) {
+          const startX = (bus * 24) % 980;
+          const startY = Math.floor(bus / 8) * 160 + 20;
+          for (let lane = 0; lane < 5; lane++) {
+            const lx = startX + lane * 4;
+            const ly = startY + lane * 4;
+            ctx.beginPath();
+            ctx.moveTo(lx, ly);
+            ctx.lineTo(lx + 90, ly);
+            ctx.lineTo(lx + 125, ly + 35);
+            ctx.lineTo(lx + 125, ly + 110);
+            ctx.stroke();
+          }
+        }
+
+        // White Silkscreen Component Boxes & Reference Designators
+        ctx.strokeStyle = 'rgba(235, 245, 238, 0.55)';
+        ctx.lineWidth = 1.4;
+        for (let s = 0; s < 120; s++) {
+          const sx = (s * 83) % 980;
+          const sy = (s * 59) % 980;
+          ctx.strokeRect(sx, sy, 14, 8);
+        }
+
+        // Gold & Tinned Copper Through-Hole Vias
+        for (let v = 0; v < 900; v++) {
+          const vx = (v * 37 + (v % 7) * 13) % 1016;
+          const vy = (v * 61 + (v % 11) * 17) % 1016;
+          ctx.fillStyle = v % 3 === 0 ? '#e5b83b' : '#9eb3a4';
+          ctx.beginPath();
+          ctx.arc(vx, vy, 2.4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#062e14';
+          ctx.beginPath();
+          ctx.arc(vx, vy, 1.0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        this.cache.greenPCB = tex;
+        return tex;
+      },
+
+      // 1C. Perforated Hexagonal Honeycomb Grille (With Alpha Cutout for See-Through Vents)
+      getHoneycombGrille() {
+        if (this.cache.honeycomb) return this.cache.honeycomb;
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        // Solid metal web base
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 512, 512);
+
+        // Punch out transparent hexagonal holes (using destination-out for genuine alpha cutout)
+        const r = 18;
+        const dx = r * 1.78;
+        const dy = r * 1.54;
+        ctx.globalCompositeOperation = 'destination-out';
+        for (let row = -1; row < 24; row++) {
+          for (let col = -1; col < 22; col++) {
+            const cx = col * dx + (row % 2 ? dx * 0.5 : 0);
+            const cy = row * dy;
+            ctx.beginPath();
+            for (let s = 0; s < 6; s++) {
+              const ang = (s / 6) * Math.PI * 2 + Math.PI / 6;
+              const px = cx + Math.cos(ang) * (r * 0.76);
+              const py = cy + Math.sin(ang) * (r * 0.76);
+              if (s === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(3.5, 2.5);
+        this.cache.honeycomb = tex;
+        return tex;
+      },
+
+      // 1D. Gold LGA CPU Contact Pad Matrix Texture (115x / 1700 Land Grid Array)
+      getLGAPadArray() {
+        if (this.cache.lgaPads) return this.cache.lgaPads;
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#0b4f24';
+        ctx.fillRect(0, 0, 512, 512);
+
+        ctx.fillStyle = '#ebb834';
+        for (let r = 16; r < 496; r += 10) {
+          for (let c = 16; c < 496; c += 10) {
+            // Leave central capacitor cavity clear
+            if (r > 180 && r < 330 && c > 180 && c < 330) continue;
+            ctx.fillRect(c, r, 6.5, 6.5);
+          }
+        }
+
+        const tex = new THREE.CanvasTexture(canvas);
+        this.cache.lgaPads = tex;
+        return tex;
+      },
+
+      // 1E. EDM Spark-Textured Injection-Molded ABS Plastic Micro-Grain
+      getMattePlastic() {
+        if (this.cache.plastic) return this.cache.plastic;
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#808080';
+        ctx.fillRect(0, 0, 512, 512);
+        for (let i = 0; i < 18000; i++) {
+          const v = 108 + Math.floor(Math.random() * 42);
+          ctx.fillStyle = `rgb(${v},${v},${v})`;
+          ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+        }
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(2, 2);
+        this.cache.plastic = tex;
+        return tex;
+      }
+    };
+
+    // ============================================================================
+    // 2. CAD PRECISION GEOMETRY HELPERS (Beveled Extrusions, Screws & Swept Blades)
+    // ============================================================================
+    const CAD = {
+      // Normalize ExtrudeGeometry UVs to [0..1] so procedural textures map cleanly
+      normalizeUVs(geometry) {
+        geometry.computeBoundingBox();
+        const max = geometry.boundingBox.max;
+        const min = geometry.boundingBox.min;
+        const range = new THREE.Vector3().subVectors(max, min);
+        const pos = geometry.attributes.position;
+        const norm = geometry.attributes.normal;
+        const uvs = [];
+
+        for (let i = 0; i < pos.count; i++) {
+          const nx = Math.abs(norm.getX(i));
+          const ny = Math.abs(norm.getY(i));
+          const nz = Math.abs(norm.getZ(i));
+          const x = pos.getX(i);
+          const y = pos.getY(i);
+          const z = pos.getZ(i);
+
+          if (ny >= nx && ny >= nz) {
+            uvs.push((x - min.x) / (range.x || 1), (z - min.z) / (range.z || 1));
+          } else if (nx >= ny && nx >= nz) {
+            uvs.push((z - min.z) / (range.z || 1), (y - min.y) / (range.y || 1));
+          } else {
+            uvs.push((x - min.x) / (range.x || 1), (y - min.y) / (range.y || 1));
+          }
+        }
+        geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        return geometry;
+      },
+
+      // Create a 2D Rounded Rectangle Shape centered at (0,0)
+      roundedRectShape(w, h, r) {
+        const shape = new THREE.Shape();
+        const hw = w / 2;
+        const hh = h / 2;
+        const cr = Math.min(r, hw * 0.9, hh * 0.9);
+        shape.moveTo(-hw + cr, -hh);
+        shape.lineTo(hw - cr, -hh);
+        shape.quadraticCurveTo(hw, -hh, hw, -hh + cr);
+        shape.lineTo(hw, hh - cr);
+        shape.quadraticCurveTo(hw, hh, hw - cr, hh);
+        shape.lineTo(-hw + cr, hh);
+        shape.quadraticCurveTo(-hw, hh, -hw, hh - cr);
+        shape.lineTo(-hw, -hh + cr);
+        shape.quadraticCurveTo(-hw, -hh, -hw + cr, -hh);
+        return shape;
+      },
+
+      // Extrude a 2D Shape with Realistic Machined Chamfer/Bevel Edges
+      extrudeBeveled(shape, depth, bevelSize = 0.008, bevelSegments = 3, curveSegments = 28) {
+        const geo = new THREE.ExtrudeGeometry(shape, {
+          depth: depth,
+          bevelEnabled: bevelSize > 0,
+          bevelThickness: bevelSize,
+          bevelSize: bevelSize,
+          bevelSegments: bevelSegments,
+          curveSegments: curveSegments
+        });
+        geo.translate(0, 0, -depth / 2);
+        this.normalizeUVs(geo);
+        geo.computeVertexNormals();
+        return geo;
+      },
+
+      // Create a Beveled Box (Replaces sharp Minecraft-like BoxGeometry with realistic chamfered edges)
+      beveledBox(w, h, d, radius = 0.012, bevel = 0.006, material, axis = 'z') {
+        let shape, geo;
+        if (axis === 'y') {
+          shape = this.roundedRectShape(w, d, radius);
+          geo = this.extrudeBeveled(shape, Math.max(0.002, h - bevel * 2), bevel, 2, 16);
+          geo.rotateX(Math.PI / 2);
+        } else if (axis === 'x') {
+          shape = this.roundedRectShape(d, h, radius);
+          geo = this.extrudeBeveled(shape, Math.max(0.002, w - bevel * 2), bevel, 2, 16);
+          geo.rotateY(Math.PI / 2);
+        } else {
+          shape = this.roundedRectShape(w, h, radius);
+          geo = this.extrudeBeveled(shape, Math.max(0.002, d - bevel * 2), bevel, 2, 16);
+        }
+        return new THREE.Mesh(geo, material);
+      },
+
+      // Create a Realistic Machined Pan-Head Screw with Star/Cross Drive Recess
+      createFastener(radius = 0.032, height = 0.02, matMetal, matRecess) {
+        const group = new THREE.Group();
+        const head = new THREE.Mesh(
+          new THREE.CylinderGeometry(radius * 0.85, radius, height, 20),
+          matMetal
+        );
+        group.add(head);
+
+        const slot1 = new THREE.Mesh(
+          new THREE.BoxGeometry(radius * 1.15, height * 0.35, radius * 0.24),
+          matRecess
+        );
+        slot1.position.y = height * 0.45;
+        const slot2 = slot1.clone();
+        slot2.rotation.y = Math.PI / 2;
+        const slot3 = slot1.clone();
+        slot3.rotation.y = Math.PI / 4;
+        group.add(slot1, slot2, slot3);
+        return group;
+      },
+
+      // Create a True 3D Swept & Twisted Aerodynamic Fan Impeller Blade
+      createSweptAirfoilBlade(innerR, outerR, maxChord, pitchRad, sweepRad, material) {
+        const radialSteps = 12;
+        const chordSteps = 8;
+        const positions = [];
+        const indices = [];
+
+        // Generate upper and lower camber surfaces for a true 3D airfoil
+        for (let side = 0; side < 2; side++) {
+          const thicknessSign = side === 0 ? 1 : -1;
+          for (let rIdx = 0; rIdx <= radialSteps; rIdx++) {
+            const u = rIdx / radialSteps; // 0 at hub, 1 at tip
+            const r = innerR + u * (outerR - innerR);
+            const chord = maxChord * (0.62 + 0.48 * Math.sin(u * Math.PI * 0.78));
+            const localPitch = pitchRad * (1.12 - 0.38 * u);
+            const forwardSweep = Math.pow(u, 1.35) * sweepRad;
+
+            for (let cIdx = 0; cIdx <= chordSteps; cIdx++) {
+              const v = cIdx / chordSteps - 0.5; // -0.5 leading edge to +0.5 trailing edge
+              // Parabolic camber + airfoil thickness profile
+              const camber = Math.cos(v * Math.PI) * 0.022 * (1 - u * 0.25);
+              const halfThick = Math.cos(v * Math.PI) * 0.0085 * thicknessSign;
+
+              const localArcAngle = forwardSweep + (v * chord * Math.cos(localPitch)) / r;
+              const zHeight = -v * chord * Math.sin(localPitch) + camber + halfThick;
+
+              const px = Math.cos(localArcAngle) * r;
+              const py = Math.sin(localArcAngle) * r;
+              const pz = zHeight;
+              positions.push(px, py, pz);
+            }
+          }
+        }
+
+        const stride = chordSteps + 1;
+        const ptsPerSide = (radialSteps + 1) * stride;
+
+        for (let rIdx = 0; rIdx < radialSteps; rIdx++) {
+          for (let cIdx = 0; cIdx < chordSteps; cIdx++) {
+            const a = rIdx * stride + cIdx;
+            const b = a + 1;
+            const c = a + stride;
+            const d = c + 1;
+            // Front surface
+            indices.push(a, b, d, a, d, c);
+            // Back surface
+            const ao = a + ptsPerSide;
+            const bo = b + ptsPerSide;
+            const co = c + ptsPerSide;
+            const do_ = d + ptsPerSide;
+            indices.push(ao, do_, bo, ao, co, do_);
+          }
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+        return new THREE.Mesh(geo, material);
+      }
+    };
+
+    // ============================================================================
+    // 3. PHOTOREALISTIC PBR MATERIAL FACTORY
+    // ============================================================================
+    function createPBRMaterials() {
+      const brushedTex = ProceduralTextures.getBrushedMetal();
+      const pcbTex = ProceduralTextures.getGreenPCB();
+      const honeycombTex = ProceduralTextures.getHoneycombGrille();
+      const lgaTex = ProceduralTextures.getLGAPadArray();
+      const plasticTex = ProceduralTextures.getMattePlastic();
+
+      return {
+        matteBlackPlastic: new THREE.MeshStandardMaterial({
+          name: 'Matte_Black_ABS_Plastic',
+          color: 0x1e2024,
+          roughness: 0.56,
+          metalness: 0.06,
+          bumpMap: plasticTex,
+          bumpScale: 0.0012
+        }),
+        chassisBlackSteel: new THREE.MeshStandardMaterial({
+          name: 'PowderCoat_Black_Steel',
+          color: 0x181a20,
+          roughness: 0.42,
+          metalness: 0.48,
+          bumpMap: plasticTex,
+          bumpScale: 0.0006
+        }),
+        brushedNickel: new THREE.MeshStandardMaterial({
+          name: 'Brushed_Nickel_Plate',
+          color: 0xdce1e8,
+          map: brushedTex,
+          bumpMap: brushedTex,
+          bumpScale: 0.0014,
+          roughness: 0.22,
+          metalness: 0.92
+        }),
+        silverAluminum: new THREE.MeshStandardMaterial({
+          name: 'Brushed_Silver_Aluminum',
+          color: 0xd2d8e0,
+          map: brushedTex,
+          bumpMap: brushedTex,
+          bumpScale: 0.0009,
+          roughness: 0.30,
+          metalness: 0.88
+        }),
+        chromeMetal: new THREE.MeshStandardMaterial({
+          name: 'Mirror_Polished_Chrome',
+          color: 0xf4f7fa,
+          roughness: 0.08,
+          metalness: 0.98
+        }),
+        copperHeatpipe: new THREE.MeshStandardMaterial({
+          name: 'Sintered_Copper_Heatpipe',
+          color: 0xd97b54,
+          map: brushedTex,
+          bumpMap: brushedTex,
+          bumpScale: 0.0006,
+          roughness: 0.18,
+          metalness: 0.95
+        }),
+        greenPCB: new THREE.MeshStandardMaterial({
+          name: 'Green_SolderMask_PCB',
+          color: 0x18843c,
+          map: pcbTex,
+          bumpMap: pcbTex,
+          bumpScale: 0.0018,
+          roughness: 0.32,
+          metalness: 0.16
+        }),
+        pcbEdgeFiberglass: new THREE.MeshStandardMaterial({
+          name: 'FR4_Fiberglass_Edge',
+          color: 0x9b8942,
+          roughness: 0.55,
+          metalness: 0.08
+        }),
+        goldContacts: new THREE.MeshStandardMaterial({
+          name: 'Hard_Gold_Contacts',
+          color: 0xebb834,
+          roughness: 0.16,
+          metalness: 0.96
+        }),
+        lgaGoldMatrix: new THREE.MeshStandardMaterial({
+          name: 'LGA_Gold_Pad_Matrix',
+          color: 0xffffff,
+          map: lgaTex,
+          bumpMap: lgaTex,
+          bumpScale: 0.0015,
+          roughness: 0.22,
+          metalness: 0.92
+        }),
+        icEpoxyBlack: new THREE.MeshStandardMaterial({
+          name: 'IC_Epoxy_Package',
+          color: 0x16181c,
+          roughness: 0.44,
+          metalness: 0.08,
+          bumpMap: plasticTex,
+          bumpScale: 0.0008
+        }),
+        slotBlue: new THREE.MeshStandardMaterial({
+          name: 'DIMM_Slot_RoyalBlue',
+          color: 0x1452b8,
+          roughness: 0.38,
+          metalness: 0.05
+        }),
+        slotWhite: new THREE.MeshStandardMaterial({
+          name: 'PCI_Connector_Ivory',
+          color: 0xebe7dc,
+          roughness: 0.42,
+          metalness: 0.04
+        }),
+        portMagenta: new THREE.MeshStandardMaterial({
+          name: 'DB25_Parallel_Magenta',
+          color: 0xb02279,
+          roughness: 0.4,
+          metalness: 0.05
+        }),
+        portTeal: new THREE.MeshStandardMaterial({
+          name: 'DB9_Serial_Teal',
+          color: 0x187e7c,
+          roughness: 0.4,
+          metalness: 0.05
+        }),
+        portGreenPS2: new THREE.MeshStandardMaterial({
+          name: 'PS2_Mouse_Green',
+          color: 0x229954,
+          roughness: 0.4,
+          metalness: 0.05
+        }),
+        portPurplePS2: new THREE.MeshStandardMaterial({
+          name: 'PS2_Keyboard_Purple',
+          color: 0x6c3483,
+          roughness: 0.4,
+          metalness: 0.05
+        }),
+        wireRed: new THREE.MeshStandardMaterial({
+          name: 'PVC_Wire_Red',
+          color: 0xdc1e1e,
+          roughness: 0.34,
+          metalness: 0.05
+        }),
+        wireYellow: new THREE.MeshStandardMaterial({
+          name: 'PVC_Wire_Yellow',
+          color: 0xfacc15,
+          roughness: 0.34,
+          metalness: 0.05
+        }),
+        wireOrange: new THREE.MeshStandardMaterial({
+          name: 'PVC_Wire_Orange',
+          color: 0xea580c,
+          roughness: 0.34,
+          metalness: 0.05
+        }),
+        wirePurple: new THREE.MeshStandardMaterial({
+          name: 'PVC_Wire_Purple',
+          color: 0x7e22ce,
+          roughness: 0.34,
+          metalness: 0.05
+        }),
+        wireBlack: new THREE.MeshStandardMaterial({
+          name: 'PVC_Wire_Black',
+          color: 0x141518,
+          roughness: 0.38,
+          metalness: 0.05
+        }),
+        honeycombDark: new THREE.MeshStandardMaterial({
+          name: 'Perforated_Black_Mesh',
+          color: 0x22262e,
+          alphaMap: honeycombTex,
+          alphaTest: 0.45,
+          bumpMap: honeycombTex,
+          bumpScale: 0.002,
+          side: THREE.DoubleSide,
+          roughness: 0.45,
+          metalness: 0.55
+        }),
+        honeycombSilver: new THREE.MeshStandardMaterial({
+          name: 'Perforated_Silver_Exhaust',
+          color: 0xcbd2dc,
+          alphaMap: honeycombTex,
+          alphaTest: 0.45,
+          bumpMap: honeycombTex,
+          bumpScale: 0.002,
+          side: THREE.DoubleSide,
+          roughness: 0.3,
+          metalness: 0.88
+        })
+      };
+    }
+
+    function setExplodeOffset(obj, x, y, z) {
+      obj.userData.basePos = obj.position.clone();
+      obj.userData.explodeVec = new THREE.Vector3(x, y, z);
+    }
+
+    // ============================================================================
+    // MODEL 1: Black PC Cooling Fan with Power Lead (Case_Fan.glb)
+    // ============================================================================
+    function buildCaseFanModel() {
+      const mat = createPBRMaterials();
+      const root = new THREE.Group();
+      root.name = 'Case_Fan';
+
+      // 1A. Precision Injection-Molded Dual-Flange Frame with Circular Venturi Bore & Corner Holes
+      const frameGroup = new THREE.Group();
+      frameGroup.name = 'Fan_InjectionMolded_Frame';
+
+      const createFlangePlate = (zPos) => {
+        const shape = CAD.roundedRectShape(1.2, 1.2, 0.09);
+        // Central circular airflow bore hole
+        const boreHole = new THREE.Path();
+        boreHole.absarc(0, 0, 0.545, 0, Math.PI * 2, true);
+        shape.holes.push(boreHole);
+
+        // 4 Corner mounting screw holes
+        const corners = [[-0.475, 0.475], [0.475, 0.475], [-0.475, -0.475], [0.475, -0.475]];
+        corners.forEach(([cx, cy]) => {
+          const hole = new THREE.Path();
+          hole.absarc(cx, cy, 0.042, 0, Math.PI * 2, true);
+          shape.holes.push(hole);
+        });
+
+        const geo = CAD.extrudeBeveled(shape, 0.038, 0.005, 2, 48);
+        const plate = new THREE.Mesh(geo, mat.matteBlackPlastic);
+        plate.position.z = zPos;
+        return plate;
+      };
+
+      // Front and Rear Flanges
+      frameGroup.add(createFlangePlate(0.11));
+      frameGroup.add(createFlangePlate(-0.11));
+
+      // Central Cylindrical Venturi Shroud Wall + 4 Corner Hollow Screw Sleeves
+      const shroudGeo = new THREE.CylinderGeometry(0.575, 0.575, 0.22, 56, 1, true).rotateX(Math.PI / 2);
+      const shroudMat = mat.matteBlackPlastic.clone();
+      shroudMat.side = THREE.DoubleSide;
+      const shroudWall = new THREE.Mesh(shroudGeo, shroudMat);
+      frameGroup.add(shroudWall);
+
+      const corners = [[-0.475, 0.475], [0.475, 0.475], [-0.475, -0.475], [0.475, -0.475]];
+      corners.forEach(([cx, cy]) => {
+        // Corner structural pillar & reinforcement ribs matching reference image
+        const sleeve = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.068, 0.068, 0.22, 24, 1, true).rotateX(Math.PI / 2),
+          shroudMat
+        );
+        sleeve.position.set(cx, cy, 0);
+        frameGroup.add(sleeve);
+
+        const rib1 = CAD.beveledBox(0.11, 0.018, 0.21, 0.003, 0.002, mat.matteBlackPlastic);
+        rib1.position.set(cx * 0.92, cy * 1.1, 0);
+        const rib2 = CAD.beveledBox(0.018, 0.11, 0.21, 0.003, 0.002, mat.matteBlackPlastic);
+        rib2.position.set(cx * 1.1, cy * 0.92, 0);
+        frameGroup.add(rib1, rib2);
+      });
+
+      // 4 Rear Curved Stator Struts & Rear Motor Cup
+      const motorCup = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.22, 0.22, 0.03, 36).rotateX(Math.PI / 2),
+        mat.matteBlackPlastic
+      );
+      motorCup.position.z = -0.105;
+      frameGroup.add(motorCup);
+
+      for (let s = 0; s < 4; s++) {
+        const ang = (s / 4) * Math.PI * 2 + 0.45;
+        const strutCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(Math.cos(ang) * 0.18, Math.sin(ang) * 0.18, -0.105),
+          new THREE.Vector3(Math.cos(ang + 0.18) * 0.37, Math.sin(ang + 0.18) * 0.37, -0.105),
+          new THREE.Vector3(Math.cos(ang + 0.32) * 0.55, Math.sin(ang + 0.32) * 0.55, -0.105)
+        ]);
+        const strut = new THREE.Mesh(new THREE.TubeGeometry(strutCurve, 16, 0.016, 8, false), mat.matteBlackPlastic);
+        frameGroup.add(strut);
+      }
+
+      setExplodeOffset(frameGroup, 0, 0, -0.38);
+      root.add(frameGroup);
+
+      // 1B. Central 7-Blade Swept Airfoil Impeller Rotor (Animatable!)
+      const rotorGroup = new THREE.Group();
+      rotorGroup.name = 'Fan_7Blade_Airfoil_Rotor';
+      rotorGroup.userData.spinZ = true;
+
+      // Beveled Motor Hub Drum
+      const hubShape = new THREE.Shape();
+      hubShape.absarc(0, 0, 0.215, 0, Math.PI * 2, false);
+      const hubGeo = CAD.extrudeBeveled(hubShape, 0.17, 0.014, 4, 48);
+      const hubMesh = new THREE.Mesh(hubGeo, mat.matteBlackPlastic);
+      rotorGroup.add(hubMesh);
+
+      // Central gate mark & 3 recessed molding dimples on front hub face (exact match to photo)
+      const centerDimple = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.018, 0.008, 16).rotateX(Math.PI / 2),
+        mat.icEpoxyBlack
+      );
+      centerDimple.position.z = 0.098;
+      rotorGroup.add(centerDimple);
+
+      for (let d = 0; d < 3; d++) {
+        const dAng = (d / 3) * Math.PI * 2 + 1.1;
+        const dimple = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.016, 0.016, 0.008, 16).rotateX(Math.PI / 2),
+          mat.icEpoxyBlack
+        );
+        dimple.position.set(Math.cos(dAng) * 0.145, Math.sin(dAng) * 0.145, 0.098);
+        rotorGroup.add(dimple);
+      }
+
+      // 7 True Swept & Twisted Airfoil Blades
+      const bladeProto = CAD.createSweptAirfoilBlade(0.20, 0.525, 0.245, 0.56, -0.38, mat.matteBlackPlastic);
+      for (let b = 0; b < 7; b++) {
+        const bladeInst = bladeProto.clone();
+        bladeInst.rotation.z = (b / 7) * Math.PI * 2;
+        bladeInst.name = `Airfoil_Blade_${b + 1}`;
+        rotorGroup.add(bladeInst);
+      }
+
+      setExplodeOffset(rotorGroup, 0, 0, 0.45);
+      root.add(rotorGroup);
+
+      // 1C. Coiled Red & Black Power Lead with Zip-Tie & Keyed White 2-Pin Molex Connector
+      const cableGroup = new THREE.Group();
+      cableGroup.name = 'Fan_Coiled_Power_Lead';
+
+      const redCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-0.32, -0.48, -0.09),
+        new THREE.Vector3(-0.74, -0.52, -0.04),
+        new THREE.Vector3(-0.82, -0.45, 0.16),
+        new THREE.Vector3(-0.52, -0.53, 0.24),
+        new THREE.Vector3(-0.80, -0.54, 0.30),
+        new THREE.Vector3(-0.42, -0.58, 0.42)
+      ]);
+      const blackCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-0.32, -0.50, -0.09),
+        new THREE.Vector3(-0.76, -0.55, -0.02),
+        new THREE.Vector3(-0.84, -0.48, 0.18),
+        new THREE.Vector3(-0.54, -0.56, 0.26),
+        new THREE.Vector3(-0.82, -0.57, 0.32),
+        new THREE.Vector3(-0.42, -0.58, 0.38)
+      ]);
+
+      cableGroup.add(
+        new THREE.Mesh(new THREE.TubeGeometry(redCurve, 48, 0.015, 12, false), mat.wireRed),
+        new THREE.Mesh(new THREE.TubeGeometry(blackCurve, 48, 0.015, 12, false), mat.wireBlack)
+      );
+
+      // Molded Black Cable Tie with Locking Head
+      const zipBand = new THREE.Mesh(new THREE.TorusGeometry(0.052, 0.012, 12, 24), mat.icEpoxyBlack);
+      zipBand.position.set(-0.67, -0.53, 0.24);
+      zipBand.rotation.y = 0.55;
+      cableGroup.add(zipBand);
+
+      // Keyed White 2-Pin Connector Housing with Recessed Cavity & 2 Gold Pins
+      const plugGroup = new THREE.Group();
+      plugGroup.name = 'Molex_2Pin_Header';
+      const plugBody = CAD.beveledBox(0.15, 0.085, 0.115, 0.008, 0.004, mat.slotWhite);
+      plugGroup.add(plugBody);
+
+      const plugCavity = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.058, 0.085), mat.icEpoxyBlack);
+      plugCavity.position.x = 0.062;
+      plugGroup.add(plugCavity);
+
+      const guideRib1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.015, 0.012), mat.slotWhite);
+      guideRib1.position.set(0, 0.046, 0.032);
+      const guideRib2 = guideRib1.clone();
+      guideRib2.position.z = -0.032;
+      plugGroup.add(guideRib1, guideRib2);
+
+      [-0.022, 0.022].forEach((pz) => {
+        const pin = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.014, 0.014), mat.goldContacts);
+        pin.position.set(0.058, 0, pz);
+        plugGroup.add(pin);
+      });
+
+      plugGroup.position.set(-0.35, -0.58, 0.40);
+      plugGroup.rotation.y = -0.38;
+      cableGroup.add(plugGroup);
+
+      setExplodeOffset(cableGroup, -0.45, -0.25, 0.35);
+      root.add(cableGroup);
+
+      return root;
+    }
+
+    // ============================================================================
+    // MODEL 2: Open-Sided Black Mid-Tower PC Case (PC_Case.glb)
+    // ============================================================================
+    function buildPCCaseModel() {
+      const mat = createPBRMaterials();
+      const root = new THREE.Group();
+      root.name = 'PC_Case_MidTower';
+
+      // 2A. Main Steel Chassis Frame, Embossed Motherboard Tray & Brass Standoffs
+      const chassisGroup = new THREE.Group();
+      chassisGroup.name = 'Chassis_Steel_Structure';
+
+      // Motherboard Tray with Cutouts for CPU Cooler Backplate & Cable Management
+      const trayShape = CAD.roundedRectShape(1.68, 1.82, 0.02);
+      // CPU Backplate Cutout
+      const cpuCut = new THREE.Path();
+      cpuCut.moveTo(-0.42, 0.15);
+      cpuCut.lineTo(0.02, 0.15);
+      cpuCut.lineTo(0.02, 0.62);
+      cpuCut.lineTo(-0.42, 0.62);
+      cpuCut.closePath();
+      trayShape.holes.push(cpuCut);
+
+      // Lower & Side Cable Routing Grommet Cutouts
+      [[-0.42, -0.42, 0.44, 0.42], [0.16, 0.22, 0.12, 0.35], [0.16, -0.32, 0.12, 0.35]].forEach(([x, y, w, h]) => {
+        const hPath = new THREE.Path();
+        hPath.moveTo(x, y);
+        hPath.lineTo(x + w, y);
+        hPath.lineTo(x + w, y + h);
+        hPath.lineTo(x, y + h);
+        hPath.closePath();
+        trayShape.holes.push(hPath);
+      });
+
+      const trayGeo = CAD.extrudeBeveled(trayShape, 0.025, 0.004, 2, 16);
+      const moboTray = new THREE.Mesh(trayGeo, mat.chassisBlackSteel);
+      moboTray.position.set(-0.02, 0.05, -0.38);
+      chassisGroup.add(moboTray);
+
+      // Right Side Solid Exterior Panel behind Motherboard Tray
+      const rightSidePanel = CAD.beveledBox(1.74, 1.86, 0.02, 0.01, 0.004, mat.chassisBlackSteel);
+      rightSidePanel.position.set(0, 0.05, -0.44);
+      chassisGroup.add(rightSidePanel);
+
+      // 9 Hexagonal Brass Motherboard Standoffs
+      const standoffCoords = [
+        [-0.58, 0.68], [-0.15, 0.68], [0.22, 0.68],
+        [-0.58, 0.12], [-0.15, 0.12], [0.22, 0.12],
+        [-0.58, -0.44], [-0.15, -0.44], [0.22, -0.44]
+      ];
+      standoffCoords.forEach(([sx, sy]) => {
+        const standoff = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 0.042, 6).rotateX(Math.PI / 2),
+          mat.goldContacts
+        );
+        standoff.position.set(sx, sy, -0.355);
+        chassisGroup.add(standoff);
+      });
+
+      // Top & Bottom Folded Steel Panels with See-Through Honeycomb Ventilation Cutouts
+      const topPanel = CAD.beveledBox(1.76, 0.038, 0.88, 0.01, 0.004, mat.chassisBlackSteel, 'y');
+      topPanel.position.set(0, 0.97, 0);
+      const topVent = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.56).rotateX(Math.PI / 2), mat.honeycombDark);
+      topVent.position.set(-0.18, 0.95, 0);
+      chassisGroup.add(topPanel, topVent);
+
+      const botPanel = CAD.beveledBox(1.76, 0.042, 0.88, 0.01, 0.004, mat.chassisBlackSteel, 'y');
+      botPanel.position.set(0, -0.87, 0);
+      const botVent = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.58).rotateX(Math.PI / 2), mat.honeycombDark);
+      botVent.position.set(-0.15, -0.848, 0);
+      chassisGroup.add(botPanel, botVent);
+
+      // 4 Cylindrical Rubber Isolation Case Feet with Chrome Trim Rings
+      [[-0.72, -0.32], [0.72, -0.32], [-0.72, 0.32], [0.72, 0.32]].forEach(([fx, fz]) => {
+        const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.085, 0.065, 28), mat.icEpoxyBlack);
+        foot.position.set(fx, -0.92, fz);
+        chassisGroup.add(foot);
+      });
+
+      setExplodeOffset(chassisGroup, 0, 0, -0.28);
+      root.add(chassisGroup);
+
+      // 2B. Front Bezel Assembly (Chamfered Frame, 4 Brushed 5.25" Bay Covers & 4 Honeycomb Mesh Bays)
+      const frontBezel = new THREE.Group();
+      frontBezel.name = 'Front_Mesh_And_Bay_Bezel';
+
+      const bezelShell = CAD.beveledBox(0.13, 1.88, 0.90, 0.02, 0.012, mat.matteBlackPlastic, 'x');
+      bezelShell.position.set(0.90, 0.05, 0);
+      frontBezel.add(bezelShell);
+
+      // Top 4 Brushed Anodized 5.25" Optical Drive Bay Covers
+      for (let b = 0; b < 4; b++) {
+        const cover = CAD.beveledBox(0.035, 0.162, 0.76, 0.006, 0.004, mat.chassisBlackSteel, 'x');
+        cover.position.set(0.955, 0.79 - b * 0.175, 0);
+        frontBezel.add(cover);
+      }
+
+      // Bottom 4 Perforated Honeycomb Intake Mesh Covers with Recessed Backing
+      for (let m = 0; m < 4; m++) {
+        const yPos = 0.02 - m * 0.215;
+        const meshTrim = CAD.beveledBox(0.03, 0.195, 0.76, 0.006, 0.004, mat.icEpoxyBlack, 'x');
+        meshTrim.position.set(0.945, yPos, 0);
+        const meshGrille = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.74, 0.18).rotateY(Math.PI / 2),
+          mat.honeycombDark
+        );
+        meshGrille.position.set(0.964, yPos, 0);
+        frontBezel.add(meshTrim, meshGrille);
+      }
+
+      setExplodeOffset(frontBezel, 0.55, 0, 0);
+      root.add(frontBezel);
+
+      // 2C. Internal 5.25" Optical Cage & 3.5" HDD Cage with Tool-Less Sleds
+      const cagesGroup = new THREE.Group();
+      cagesGroup.name = 'Internal_Optical_And_HDD_Cages';
+
+      const oddCage = CAD.beveledBox(0.50, 0.64, 0.82, 0.01, 0.004, mat.chassisBlackSteel);
+      oddCage.position.set(0.56, 0.62, 0);
+      cagesGroup.add(oddCage);
+
+      // Stamped Side Slots on Optical Cage
+      for (let slot = 0; slot < 3; slot++) {
+        const slotCut = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.045, 0.84), mat.icEpoxyBlack);
+        slotCut.position.set(0.56, 0.76 - slot * 0.16, 0);
+        cagesGroup.add(slotCut);
+      }
+
+      const hddCage = CAD.beveledBox(0.46, 0.68, 0.82, 0.01, 0.004, mat.chassisBlackSteel);
+      hddCage.position.set(0.58, -0.50, 0);
+      cagesGroup.add(hddCage);
+
+      for (let s = 0; s < 4; s++) {
+        const trayCavity = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.09, 0.84), mat.icEpoxyBlack);
+        trayCavity.position.set(0.58, -0.25 - s * 0.16, 0);
+        cagesGroup.add(trayCavity);
+      }
+
+      setExplodeOffset(cagesGroup, 0.25, 0, 0.38);
+      root.add(cagesGroup);
+
+      // 2D. Rear Panel with See-Through 120mm Exhaust Honeycomb, I/O Cutout, PSU Cutout & 7 PCIe Brackets
+      const rearGroup = new THREE.Group();
+      rearGroup.name = 'Rear_Exhaust_And_PCIe_Slots';
+
+      const rearShape = CAD.roundedRectShape(0.88, 1.84, 0.01);
+      // Rear I/O Shield Cutout, 120mm Fan Cutout, and Bottom PSU Cutout
+      [
+        [-0.36, 0.30, 0.16, 0.48], // I/O Shield Cutout
+        [-0.14, 0.32, 0.44, 0.44], // 120mm Fan Cutout
+        [-0.28, -0.78, 0.56, 0.32] // Bottom PSU Cutout
+      ].forEach(([x, y, w, h]) => {
+        const hole = new THREE.Path();
+        hole.moveTo(x, y);
+        hole.lineTo(x + w, y);
+        hole.lineTo(x + w, y + h);
+        hole.lineTo(x, y + h);
+        hole.closePath();
+        rearShape.holes.push(hole);
+      });
+
+      const rearGeo = CAD.extrudeBeveled(rearShape, 0.028, 0.003, 2, 16);
+      rearGeo.rotateY(Math.PI / 2);
+      const rearWall = new THREE.Mesh(rearGeo, mat.chassisBlackSteel);
+      rearWall.position.set(-0.87, 0.05, 0);
+      rearGroup.add(rearWall);
+
+      // See-Through Rear 120mm Honeycomb Grille
+      const rearHoneycomb = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.46, 0.46).rotateY(Math.PI / 2),
+        mat.honeycombDark
+      );
+      rearHoneycomb.position.set(-0.87, 0.59, 0.08);
+      rearGroup.add(rearHoneycomb);
+
+      // 7 Ventilated PCIe Expansion Slot Covers with Thumbscrews
+      for (let p = 0; p < 7; p++) {
+        const py = 0.16 - p * 0.068;
+        const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.046, 0.40), mat.honeycombDark);
+        bracket.position.set(-0.865, py, 0.12);
+        const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.025, 12).rotateZ(Math.PI / 2), mat.chromeMetal);
+        screw.position.set(-0.85, py, 0.33);
+        rearGroup.add(bracket, screw);
+      }
+
+      setExplodeOffset(rearGroup, -0.52, 0, 0);
+      root.add(rearGroup);
+
+      return root;
+    }
+
+    // ============================================================================
+    // MODEL 3: Premium CPU Cooler with Copper Heat Pipes (CPU_Cooler.glb)
+    // ============================================================================
+    function buildCPUCoolerModel() {
+      const mat = createPBRMaterials();
+      const root = new THREE.Group();
+      root.name = 'CPU_Cooler_Tower';
+
+      // 3A. CNC-Milled Aluminum Contact Cold-Plate with Top Micro-Fins & Spring-Loaded Brackets
+      const baseGroup = new THREE.Group();
+      baseGroup.name = 'Heatsink_CNC_Contact_Base';
+
+      const coldPlate = CAD.beveledBox(0.44, 0.11, 0.44, 0.012, 0.005, mat.brushedNickel);
+      coldPlate.position.set(0, -0.68, 0);
+      baseGroup.add(coldPlate);
+
+      // Top Extruded Micro-Ridges on Cold Plate (matching reference image)
+      for (let r = -3; r <= 3; r++) {
+        const ridge = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.018, 0.028), mat.brushedNickel);
+        ridge.position.set(0, -0.618, r * 0.052);
+        baseGroup.add(ridge);
+      }
+
+      // Stepped Steel Mounting Cross-Wing Brackets & 4 Captive Spring Screws
+      const bracketShape = new THREE.Shape();
+      bracketShape.moveTo(-0.42, -0.69);
+      bracketShape.lineTo(-0.28, -0.69);
+      bracketShape.lineTo(-0.22, -0.63);
+      bracketShape.lineTo(0.22, -0.63);
+      bracketShape.lineTo(0.28, -0.69);
+      bracketShape.lineTo(0.42, -0.69);
+      bracketShape.lineTo(0.42, -0.665);
+      bracketShape.lineTo(0.27, -0.665);
+      bracketShape.lineTo(0.21, -0.605);
+      bracketShape.lineTo(-0.21, -0.605);
+      bracketShape.lineTo(-0.27, -0.665);
+      bracketShape.lineTo(-0.42, -0.665);
+      bracketShape.closePath();
+
+      const bracketGeo = CAD.extrudeBeveled(bracketShape, 0.36, 0.003, 2, 12);
+      const bracketMesh = new THREE.Mesh(bracketGeo, mat.brushedNickel);
+      baseGroup.add(bracketMesh);
+
+      // 4 Detailed Spring-Loaded Captive Mounting Screws at Corners
+      [[-0.36, 0.14], [0.36, 0.14], [-0.36, -0.14], [0.36, -0.14]].forEach(([sx, sz]) => {
+        const screwAssy = new THREE.Group();
+        screwAssy.position.set(sx, -0.65, sz);
+
+        const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.014, 0.21, 16), mat.chromeMetal);
+        const cap = CAD.createFastener(0.036, 0.035, mat.chromeMetal, mat.icEpoxyBlack);
+        cap.position.y = 0.095;
+
+        // Helical compression spring around screw shaft
+        const springPts = [];
+        for (let t = 0; t <= 24; t++) {
+          const ang = (t / 24) * Math.PI * 8;
+          springPts.push(new THREE.Vector3(Math.cos(ang) * 0.028, -0.02 + (t / 24) * 0.09, Math.sin(ang) * 0.028));
+        }
+        const springCurve = new THREE.CatmullRomCurve3(springPts);
+        const springMesh = new THREE.Mesh(new THREE.TubeGeometry(springCurve, 48, 0.0055, 8, false), mat.chromeMetal);
+
+        screwAssy.add(shaft, cap, springMesh);
+        baseGroup.add(screwAssy);
+      });
+
+      setExplodeOffset(baseGroup, 0, -0.45, 0);
+      root.add(baseGroup);
+
+      // 3B. 4 U-Shaped Sintered Copper Heatpipes with Conical Top Caps
+      const pipesGroup = new THREE.Group();
+      pipesGroup.name = 'Copper_U_Heatpipes_4x';
+
+      const pipePositions = [
+        { baseX: -0.14, finX: 0.42, finZ: 0.05 },
+        { baseX: -0.048, finX: 0.30, finZ: -0.05 },
+        { baseX: 0.048, finX: 0.18, finZ: 0.05 },
+        { baseX: 0.14, finX: 0.08, finZ: -0.05 }
+      ];
+
+      pipePositions.forEach((p) => {
+        [-1, 1].forEach((side) => {
+          const targetX = side * p.finX;
+          const startX = side * Math.abs(p.baseX);
+          const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(startX, -0.68, -0.18),
+            new THREE.Vector3(startX, -0.68, 0.14),
+            new THREE.Vector3(targetX * 0.82, -0.56, p.finZ + 0.06),
+            new THREE.Vector3(targetX, -0.34, p.finZ),
+            new THREE.Vector3(targetX, 0.72, p.finZ)
+          ]);
+          const pipeMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.034, 20, false), mat.copperHeatpipe);
+          pipesGroup.add(pipeMesh);
+
+          // Precision Conical/Domed Copper Heatpipe End Cap
+          const capGroup = new THREE.Group();
+          capGroup.position.set(targetX, 0.72, p.finZ);
+          const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.033, 0.034, 0.03, 20), mat.copperHeatpipe);
+          const cone = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.033, 0.065, 20), mat.copperHeatpipe);
+          cone.position.y = 0.045;
+          capGroup.add(neck, cone);
+          pipesGroup.add(capGroup);
+        });
+      });
+
+      setExplodeOffset(pipesGroup, 0, -0.22, -0.25);
+      root.add(pipesGroup);
+
+      // 3C. Stamped Contoured Aluminum Fin Stack (42 Individual Aerodynamic Fins)
+      const finStack = new THREE.Group();
+      finStack.name = 'Stamped_Aluminum_Fin_Array_42x';
+
+      const finShape = new THREE.Shape();
+      finShape.moveTo(-0.58, -0.26);
+      finShape.lineTo(-0.18, -0.26);
+      finShape.lineTo(-0.12, -0.22);
+      finShape.lineTo(0.12, -0.22);
+      finShape.lineTo(0.18, -0.26);
+      finShape.lineTo(0.58, -0.26);
+      finShape.lineTo(0.58, -0.16);
+      finShape.lineTo(0.61, -0.12);
+      finShape.lineTo(0.61, 0.12);
+      finShape.lineTo(0.58, 0.16);
+      finShape.lineTo(0.58, 0.26);
+      finShape.lineTo(-0.58, 0.26);
+      finShape.lineTo(-0.58, 0.16);
+      finShape.lineTo(-0.61, 0.12);
+      finShape.lineTo(-0.61, -0.12);
+      finShape.lineTo(-0.58, -0.16);
+      finShape.closePath();
+
+      const finGeo = CAD.extrudeBeveled(finShape, 0.008, 0.0015, 1, 12);
+      finGeo.rotateX(Math.PI / 2);
+
+      for (let f = 0; f < 42; f++) {
+        const fin = new THREE.Mesh(finGeo, mat.silverAluminum);
+        fin.position.set(0, -0.35 + f * 0.0255, -0.04);
+        finStack.add(fin);
+      }
+
+      setExplodeOffset(finStack, 0, 0.25, -0.38);
+      root.add(finStack);
+
+      // 3D. Front 120mm PWM Fan Assembly with Formed Stainless-Steel Wire Retention Clips
+      const fanAssembly = buildCaseFanModel();
+      fanAssembly.name = 'Cooler_120mm_PWM_Fan';
+      const looseCable = fanAssembly.getObjectByName('Fan_Coiled_Power_Lead');
+      if (looseCable) fanAssembly.remove(looseCable);
+
+      fanAssembly.scale.set(0.96, 0.96, 0.96);
+      fanAssembly.position.set(0, 0.18, 0.35);
+
+      // Formed Spring-Steel Wire Retention Clips Hooking into Fan Corner Holes
+      [-1, 1].forEach((side) => {
+        const clipCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(side * 0.48, 0.48, 0.13),
+          new THREE.Vector3(side * 0.63, 0.48, 0.13),
+          new THREE.Vector3(side * 0.64, 0.26, -0.16),
+          new THREE.Vector3(side * 0.60, 0.0, -0.22),
+          new THREE.Vector3(side * 0.64, -0.26, -0.16),
+          new THREE.Vector3(side * 0.63, -0.48, 0.13),
+          new THREE.Vector3(side * 0.48, -0.48, 0.13)
+        ]);
+        const clipMesh = new THREE.Mesh(new THREE.TubeGeometry(clipCurve, 36, 0.009, 8, false), mat.chromeMetal);
+        fanAssembly.add(clipMesh);
+      });
+
+      setExplodeOffset(fanAssembly, 0, 0, 0.55);
+      root.add(fanAssembly);
+
+      return root;
+    }
+
+    // ============================================================================
+    // MODEL 4: Premium Desktop CPU Processor (CPU.glb)
+    // ============================================================================
+    function buildCPUModel() {
+      const mat = createPBRMaterials();
+      const root = new THREE.Group();
+      root.name = 'Desktop_CPU_Processor';
+
+      // 4A. Multi-Layer Green FR4 PCB Substrate with Edge Keying Notches & Gold Pin-1 Marker
+      const pcbGroup = new THREE.Group();
+      pcbGroup.name = 'CPU_FR4_Green_Substrate';
+
+      // Create Square PCB Profile with 4 Semicircular Alignment Notches on Sides
+      const s = 0.64;
+      const nr = 0.042;
+      const pcbShape = new THREE.Shape();
+      pcbShape.moveTo(-s, -s);
+      pcbShape.lineTo(s, -s);
+      // Right edge with 2 notches
+      pcbShape.lineTo(s, -0.28 - nr);
+      pcbShape.absarc(s, -0.28, nr, -Math.PI / 2, Math.PI / 2, true);
+      pcbShape.lineTo(s, 0.18 - nr);
+      pcbShape.absarc(s, 0.18, nr, -Math.PI / 2, Math.PI / 2, true);
+      pcbShape.lineTo(s, s);
+      // Top edge
+      pcbShape.lineTo(-s, s);
+      // Left edge with 2 notches
+      pcbShape.lineTo(-s, 0.18 + nr);
+      pcbShape.absarc(-s, 0.18, nr, Math.PI / 2, -Math.PI / 2, true);
+      pcbShape.lineTo(-s, -0.28 + nr);
+      pcbShape.absarc(-s, -0.28, nr, Math.PI / 2, -Math.PI / 2, true);
+      pcbShape.closePath();
+
+      const pcbGeo = CAD.extrudeBeveled(pcbShape, 0.046, 0.003, 2, 24);
+      pcbGeo.rotateX(Math.PI / 2);
+      const substrate = new THREE.Mesh(pcbGeo, mat.greenPCB);
+      pcbGroup.add(substrate);
+
+      // Gold Pin-1 Corner Alignment Triangle + Corner Fiducial Marks
+      const triShape = new THREE.Shape();
+      triShape.moveTo(0, 0);
+      triShape.lineTo(0.085, 0);
+      triShape.lineTo(0, 0.085);
+      triShape.closePath();
+      const triGeo = new THREE.ExtrudeGeometry(triShape, { depth: 0.004, bevelEnabled: false });
+      triGeo.rotateX(-Math.PI / 2);
+      const pin1Tri = new THREE.Mesh(triGeo, mat.goldContacts);
+      pin1Tri.position.set(-0.60, 0.026, 0.60);
+      pcbGroup.add(pin1Tri);
+
+      // Perimeter Gold Test Dots (Exact match to reference CPU photo)
+      const dotGeo = new THREE.CylinderGeometry(0.011, 0.011, 0.006, 14);
+      for (let i = 0; i < 16; i++) {
+        // Double row on top-left edge
+        const d1 = new THREE.Mesh(dotGeo, mat.goldContacts);
+        d1.position.set(-0.34 + i * 0.026, 0.025, -0.585);
+        const d2 = new THREE.Mesh(dotGeo, mat.goldContacts);
+        d2.position.set(-0.34 + i * 0.026, 0.025, -0.558);
+        // Single row on right edge
+        const d3 = new THREE.Mesh(dotGeo, mat.goldContacts);
+        d3.position.set(0.585, 0.025, -0.18 + i * 0.026);
+        pcbGroup.add(d1, d2, d3);
+      }
+      // Bottom-left and bottom-center test pad clusters
+      for (let j = 0; j < 8; j++) {
+        const d4 = new THREE.Mesh(dotGeo, mat.goldContacts);
+        d4.position.set(-0.585, 0.025, -0.16 + j * 0.028);
+        pcbGroup.add(d4);
+      }
+
+      // Bottom Gold Land Grid Array (LGA) Contact Matrix + Central Capacitor Array
+      const lgaBottom = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.006, 1.18), mat.lgaGoldMatrix);
+      lgaBottom.position.set(0, -0.025, 0);
+      lgaBottom.name = 'CPU_Bottom_LGA_Pads';
+      pcbGroup.add(lgaBottom);
+
+      setExplodeOffset(pcbGroup, 0, -0.32, 0);
+      root.add(pcbGroup);
+
+      // 4B. Internal Flip-Chip Monolithic Silicon Die & Decoupling Capacitors (Revealed when exploded!)
+      const dieGroup = new THREE.Group();
+      dieGroup.name = 'CPU_Internal_Silicon_Die';
+      const dieMesh = CAD.beveledBox(0.46, 0.036, 0.32, 0.006, 0.003, mat.chromeMetal, 'y');
+      dieMesh.position.set(0, 0.042, 0);
+      dieGroup.add(dieMesh);
+
+      for (let c = -4; c <= 4; c++) {
+        const smd = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.014, 0.012), mat.copperHeatpipe);
+        smd.position.set(c * 0.045, 0.03, 0.22);
+        const smd2 = smd.clone();
+        smd2.position.z = -0.22;
+        dieGroup.add(smd, smd2);
+      }
+      setExplodeOffset(dieGroup, 0, 0.02, 0);
+      root.add(dieGroup);
+
+      // 4C. Precision-Stamped Multi-Tier Brushed Nickel Integrated Heat Spreader (IHS)
+      const ihsGroup = new THREE.Group();
+      ihsGroup.name = 'CPU_Brushed_Nickel_IHS';
+
+      // Lower Skirt Flange with Side Retention Ears (for Socket Load Plate)
+      const flangeShape = new THREE.Shape();
+      const fw = 0.51;
+      const fh = 0.51;
+      const earW = 0.565;
+      const earH = 0.25;
+      flangeShape.moveTo(-fw + 0.07, -fh);
+      flangeShape.lineTo(fw - 0.07, -fh);
+      flangeShape.quadraticCurveTo(fw, -fh, fw, -fh + 0.07);
+      flangeShape.lineTo(fw, -earH);
+      flangeShape.lineTo(earW, -earH + 0.03);
+      flangeShape.lineTo(earW, earH - 0.03);
+      flangeShape.lineTo(fw, earH);
+      flangeShape.lineTo(fw, fh - 0.07);
+      flangeShape.quadraticCurveTo(fw, fh, fw - 0.07, fh);
+      flangeShape.lineTo(-fw + 0.07, fh);
+      flangeShape.quadraticCurveTo(-fw, fh, -fw, fh - 0.07);
+      flangeShape.lineTo(-fw, earH);
+      flangeShape.lineTo(-earW, earH - 0.03);
+      flangeShape.lineTo(-earW, -earH + 0.03);
+      flangeShape.lineTo(-fw, -earH);
+      flangeShape.lineTo(-fw, -fh + 0.07);
+      flangeShape.quadraticCurveTo(-fw, -fh, -fw + 0.07, -fh);
+
+      const flangeGeo = CAD.extrudeBeveled(flangeShape, 0.032, 0.008, 4, 32);
+      flangeGeo.rotateX(Math.PI / 2);
+      const flangeMesh = new THREE.Mesh(flangeGeo, mat.brushedNickel);
+      flangeMesh.position.y = 0.044;
+      ihsGroup.add(flangeMesh);
+
+      // Upper Brushed Nickel Heat Spreader Plateau with Smooth Stamped Bevel
+      const topShape = CAD.roundedRectShape(0.91, 0.91, 0.075);
+      const topGeo = CAD.extrudeBeveled(topShape, 0.056, 0.016, 5, 36);
+      topGeo.rotateX(Math.PI / 2);
+      const topMesh = new THREE.Mesh(topGeo, mat.brushedNickel);
+      topMesh.position.y = 0.082;
+      ihsGroup.add(topMesh);
+
+      // Small Thermal Pressure Equalization Vent Hole on Corner of IHS Flange
+      const ventHole = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.015, 16), mat.icEpoxyBlack);
+      ventHole.position.set(-0.44, 0.062, 0.44);
+      ihsGroup.add(ventHole);
+
+      setExplodeOffset(ihsGroup, 0, 0.36, 0);
+      root.add(ihsGroup);
+
+      return root;
+    }
+
+    // ============================================================================
+    // MODEL 5: Premium Green ATX Motherboard (Motherboard.glb)
+    // ============================================================================
+    function buildMotherboardModel() {
+      const mat = createPBRMaterials();
+      const root = new THREE.Group();
+      root.name = 'ATX_Motherboard';
+
+      // 5A. Multi-Layer Green PCB Base with Beveled Edges & 9 Grounded Mounting Holes
+      const pcbGroup = new THREE.Group();
+      pcbGroup.name = 'Motherboard_Green_PCB';
+
+      const pcbShape = CAD.roundedRectShape(1.96, 1.76, 0.035);
+      const holeCoords = [
+        [-0.89, -0.79], [0, -0.79], [0.89, -0.79],
+        [-0.89, 0.02], [0.12, 0.02], [0.89, 0.02],
+        [-0.89, 0.79], [-0.22, 0.79], [0.89, 0.79]
+      ];
+      holeCoords.forEach(([hx, hz]) => {
+        const hPath = new THREE.Path();
+        hPath.absarc(hx, hz, 0.026, 0, Math.PI * 2, true);
+        pcbShape.holes.push(hPath);
+      });
+
+      const pcbGeo = CAD.extrudeBeveled(pcbShape, 0.032, 0.003, 2, 24);
+      pcbGeo.rotateX(Math.PI / 2);
+      const pcbMesh = new THREE.Mesh(pcbGeo, mat.greenPCB);
+      pcbGroup.add(pcbMesh);
+
+      // Tinned Grounding Rings with Solder Star Pads around Mounting Holes
+      holeCoords.forEach(([hx, hz]) => {
+        const ring = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.048, 0.048, 0.038, 20, 1, true),
+          mat.silverAluminum
+        );
+        ring.position.set(hx, 0, hz);
+        const flatRing = new THREE.Mesh(
+          new THREE.RingGeometry(0.026, 0.052, 20).rotateX(-Math.PI / 2),
+          mat.silverAluminum
+        );
+        flatRing.position.set(hx, 0.02, hz);
+        pcbGroup.add(ring, flatRing);
+      });
+
+      setExplodeOffset(pcbGroup, 0, -0.26, 0);
+      root.add(pcbGroup);
+
+      // 5B. Detailed LGA CPU Socket with Hinged Nickel Load Plate & Locking Lever
+      const socketGroup = new THREE.Group();
+      socketGroup.name = 'CPU_LGA_Socket_Assembly';
+
+      const sockBase = CAD.beveledBox(0.46, 0.038, 0.46, 0.015, 0.004, mat.icEpoxyBlack, 'y');
+      sockBase.position.set(-0.22, 0.035, -0.32);
+      socketGroup.add(sockBase);
+
+      const goldPinBed = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.042, 0.35), mat.lgaGoldMatrix);
+      goldPinBed.position.set(-0.22, 0.036, -0.32);
+      socketGroup.add(goldPinBed);
+
+      // Stamped Nickel Load Plate with Center Cutout Window
+      const loadShape = CAD.roundedRectShape(0.48, 0.48, 0.025);
+      const loadWin = new THREE.Path();
+      loadWin.moveTo(-0.15, -0.15);
+      loadWin.lineTo(0.15, -0.15);
+      loadWin.lineTo(0.15, 0.15);
+      loadWin.lineTo(-0.15, 0.15);
+      loadWin.closePath();
+      loadShape.holes.push(loadWin);
+      const loadGeo = CAD.extrudeBeveled(loadShape, 0.012, 0.003, 2, 16);
+      loadGeo.rotateX(Math.PI / 2);
+      const loadPlate = new THREE.Mesh(loadGeo, mat.brushedNickel);
+      loadPlate.position.set(-0.22, 0.058, -0.32);
+      socketGroup.add(loadPlate);
+
+      // Chromed Socket Actuation Lever
+      const leverCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(-0.46, 0.045, -0.56),
+        new THREE.Vector3(0.05, 0.045, -0.56),
+        new THREE.Vector3(0.05, 0.055, -0.06),
+        new THREE.Vector3(0.08, 0.075, -0.02)
+      ]);
+      const leverMesh = new THREE.Mesh(new THREE.TubeGeometry(leverCurve, 28, 0.009, 10, false), mat.chromeMetal);
+      socketGroup.add(leverMesh);
+
+      setExplodeOffset(socketGroup, 0, 0.38, 0);
+      root.add(socketGroup);
+
+      // 5C. 4 Dual-Channel DDR DIMM Memory Slots (Blue & Black with Ejector Latches)
+      const dimmGroup = new THREE.Group();
+      dimmGroup.name = 'DIMM_Memory_Slots_4x';
+
+      for (let d = 0; d < 4; d++) {
+        const isBlue = d % 2 === 1;
+        const sx = 0.24 + d * 0.088;
+        const slotMat = isBlue ? mat.slotBlue : mat.matteBlackPlastic;
+
+        const slotBody = CAD.beveledBox(0.054, 0.078, 0.98, 0.004, 0.002, slotMat, 'y');
+        slotBody.position.set(sx, 0.055, -0.28);
+        dimmGroup.add(slotBody);
+
+        // Center Slot Channel & Key Bridge
+        const groove = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.045, 0.94), mat.icEpoxyBlack);
+        groove.position.set(sx, 0.076, -0.28);
+        const keyBridge = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.025), slotMat);
+        keyBridge.position.set(sx, 0.056, -0.22);
+        dimmGroup.add(groove, keyBridge);
+
+        // White Molded Retention Latches at Both Ends
+        [-0.515, 0.515].forEach((lz) => {
+          const latch = CAD.beveledBox(0.052, 0.115, 0.046, 0.004, 0.002, mat.slotWhite, 'y');
+          latch.position.set(sx, 0.072, -0.28 + lz);
+          dimmGroup.add(latch);
+        });
+      }
+
+      setExplodeOffset(dimmGroup, 0.22, 0.32, -0.15);
+      root.add(dimmGroup);
+
+      // 5D. PCIe x1, PCIe x16 & 3 White Legacy PCI Expansion Slots
+      const pciGroup = new THREE.Group();
+      pciGroup.name = 'PCIe_And_PCI_Expansion_Slots';
+
+      const buildExpansionSlot = (len, x, z, material, hasTailLatch) => {
+        const sGrp = new THREE.Group();
+        sGrp.position.set(x, 0.052, z);
+        const body = CAD.beveledBox(len, 0.068, 0.056, 0.004, 0.002, material, 'y');
+        const trench = new THREE.Mesh(new THREE.BoxGeometry(len - 0.03, 0.04, 0.018), mat.icEpoxyBlack);
+        trench.position.y = 0.02;
+        sGrp.add(body, trench);
+        if (hasTailLatch) {
+          const tail = CAD.beveledBox(0.07, 0.075, 0.045, 0.003, 0.002, material, 'y');
+          tail.position.set(len / 2 + 0.025, 0.005, 0);
+          sGrp.add(tail);
+        }
+        return sGrp;
+      };
+
+      pciGroup.add(buildExpansionSlot(0.22, -0.35, 0.18, mat.slotWhite, false));
+      pciGroup.add(buildExpansionSlot(0.76, -0.08, 0.31, mat.matteBlackPlastic, true));
+      for (let p = 0; p < 3; p++) {
+        pciGroup.add(buildExpansionSlot(0.72, -0.10, 0.44 + p * 0.13, mat.slotWhite, false));
+      }
+
+      setExplodeOffset(pciGroup, -0.15, 0.28, 0.25);
+      root.add(pciGroup);
+
+      // 5E. Extruded Aluminum Northbridge & Southbridge Chipset Heatsinks
+      const heatsinkGroup = new THREE.Group();
+      heatsinkGroup.name = 'Chipset_Extruded_Heatsinks';
+
+      // Northbridge Heatsink Base + 9 Tall Fins + Push-Pins
+      const nbBase = CAD.beveledBox(0.28, 0.028, 0.28, 0.006, 0.002, mat.silverAluminum, 'y');
+      nbBase.position.set(0.05, 0.032, 0.06);
+      heatsinkGroup.add(nbBase);
+      for (let f = 0; f < 9; f++) {
+        const fin = CAD.beveledBox(0.28, 0.16, 0.014, 0.002, 0.001, mat.silverAluminum);
+        fin.position.set(0.05, 0.115, 0.06 - 0.12 + f * 0.03);
+        heatsinkGroup.add(fin);
+      }
+
+      // Southbridge Low-Profile Finned Heatsink
+      const sbBase = CAD.beveledBox(0.24, 0.024, 0.24, 0.005, 0.002, mat.silverAluminum, 'y');
+      sbBase.position.set(0.55, 0.03, 0.36);
+      heatsinkGroup.add(sbBase);
+      for (let f = 0; f < 8; f++) {
+        const fin = CAD.beveledBox(0.24, 0.075, 0.013, 0.002, 0.001, mat.silverAluminum);
+        fin.position.set(0.55, 0.072, 0.36 - 0.098 + f * 0.028);
+        heatsinkGroup.add(fin);
+      }
+
+      setExplodeOffset(heatsinkGroup, 0.15, 0.44, 0.1);
+      root.add(heatsinkGroup);
+
+      // 5F. Rear I/O Shield Cluster, 24-Pin ATX, SATA Ports, Toroidal Copper Chokes & CMOS Battery
+      const ioAndVRM = new THREE.Group();
+      ioAndVRM.name = 'Rear_IO_And_VRM_Power_Stage';
+
+      // Dual PS/2 Port Tower (Purple Keyboard + Green Mouse Mini-DIN)
+      const ps2Tower = CAD.beveledBox(0.15, 0.27, 0.15, 0.006, 0.003, mat.brushedNickel, 'y');
+      ps2Tower.position.set(-0.88, 0.15, -0.64);
+      const ps2Green = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 16).rotateZ(Math.PI / 2), mat.portGreenPS2);
+      ps2Green.position.set(-0.955, 0.21, -0.64);
+      const ps2Purple = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 16).rotateZ(Math.PI / 2), mat.portPurplePS2);
+      ps2Purple.position.set(-0.955, 0.095, -0.64);
+      ioAndVRM.add(ps2Tower, ps2Green, ps2Purple);
+
+      // Stacked Magenta Parallel (DB25) + Teal Serial (DB9) Ports with Hex Jackscrews
+      const lptBody = CAD.beveledBox(0.16, 0.11, 0.38, 0.006, 0.003, mat.portMagenta, 'y');
+      lptBody.position.set(-0.87, 0.19, -0.34);
+      const comBody = CAD.beveledBox(0.16, 0.09, 0.24, 0.006, 0.003, mat.portTeal, 'y');
+      comBody.position.set(-0.87, 0.08, -0.34);
+      ioAndVRM.add(lptBody, comBody);
+
+      // 2 Stacked USB + RJ45 Ethernet Shielded Towers
+      [-0.02, 0.20].forEach((uz) => {
+        const usbTower = CAD.beveledBox(0.19, 0.26, 0.18, 0.006, 0.003, mat.brushedNickel, 'y');
+        usbTower.position.set(-0.86, 0.145, uz);
+        for (let slot = 0; slot < 3; slot++) {
+          const usbPort = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.032, 0.11), mat.slotBlue);
+          usbPort.position.set(-0.945, 0.07 + slot * 0.07, uz);
+          ioAndVRM.add(usbPort);
+        }
+        ioAndVRM.add(usbTower);
+      });
+
+      // 3-Jack Color-Coded Audio Cluster (Blue Line-In, Green Line-Out, Pink Mic)
+      const audioTower = CAD.beveledBox(0.16, 0.25, 0.15, 0.006, 0.003, mat.brushedNickel, 'y');
+      audioTower.position.set(-0.86, 0.14, 0.42);
+      ioAndVRM.add(audioTower);
+      [mat.portMagenta, mat.portGreenPS2, mat.slotBlue].forEach((jMat, idx) => {
+        const jack = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 16).rotateZ(Math.PI / 2), jMat);
+        jack.position.set(-0.945, 0.065 + idx * 0.072, 0.42);
+        ioAndVRM.add(jack);
+      });
+
+      // White 24-Pin ATX Main Power Header & 4-Pin CPU 12V Header
+      const atx24 = CAD.beveledBox(0.105, 0.115, 0.46, 0.005, 0.002, mat.slotWhite, 'y');
+      atx24.position.set(0.74, 0.072, -0.40);
+      const atx4 = CAD.beveledBox(0.11, 0.11, 0.11, 0.005, 0.002, mat.slotWhite, 'y');
+      atx4.position.set(-0.68, 0.07, -0.64);
+      ioAndVRM.add(atx24, atx4);
+
+      // CR2032 Silver Coin-Cell CMOS Battery in Holder
+      const cmosSocket = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.035, 24), mat.icEpoxyBlack);
+      cmosSocket.position.set(0.52, 0.035, 0.64);
+      const cmosCell = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.038, 24), mat.chromeMetal);
+      cmosCell.position.set(0.52, 0.042, 0.64);
+      ioAndVRM.add(cmosSocket, cmosCell);
+
+      // 8 Blue & Black L-Keyed SATA Ports
+      for (let s = 0; s < 8; s++) {
+        const col = Math.floor(s / 4);
+        const row = s % 4;
+        const sata = CAD.beveledBox(0.09, 0.072, 0.055, 0.003, 0.002, row < 2 ? mat.slotBlue : mat.icEpoxyBlack, 'y');
+        sata.position.set(0.84 - col * 0.11, 0.052, 0.12 + row * 0.085);
+        ioAndVRM.add(sata);
+      }
+
+      // Wound Copper Toroidal Chokes, Solid Capacitors & BGA Controller Chips
+      [[-0.58, -0.52], [-0.58, -0.32], [-0.58, -0.12], [-0.36, 0.04], [0.58, -0.65]].forEach(([cx, cz]) => {
+        const core = new THREE.Mesh(new THREE.TorusGeometry(0.044, 0.019, 14, 24), mat.copperHeatpipe);
+        core.position.set(cx, 0.062, cz);
+        ioAndVRM.add(core);
+      });
+
+      for (let c = 0; c < 26; c++) {
+        const cx = -0.68 + (c % 7) * 0.21;
+        const cz = -0.68 + Math.floor(c / 7) * 0.42;
+        if (Math.abs(cx + 0.22) < 0.28 && Math.abs(cz + 0.32) < 0.28) continue;
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.078, 16), mat.chromeMetal);
+        cap.position.set(cx, 0.055, cz);
+        ioAndVRM.add(cap);
+      }
+
+      setExplodeOffset(ioAndVRM, -0.22, 0.28, -0.12);
+      root.add(ioAndVRM);
+
+      return root;
+    }
+
+    // ============================================================================
+    // MODEL 6: Premium Green Desktop RAM Pair (RAM_Modules.glb)
+    // ============================================================================
+    function buildSingleRAMStick(namePrefix, zOffset, explodeZ) {
+      const mat = createPBRMaterials();
+      const stickGroup = new THREE.Group();
+      stickGroup.name = namePrefix;
+
+      // 6A. Contoured Green PCB with Side Retention Notches, Key Notch & Corner Holes
+      const w = 0.88;
+      const h = 0.205;
+      const ramShape = new THREE.Shape();
+      ramShape.moveTo(-w, -h + 0.035);
+      // Bottom edge with gold-finger key notch
+      ramShape.lineTo(-0.08, -h + 0.035);
+      ramShape.lineTo(-0.08, -h);
+      ramShape.lineTo(0.06, -h);
+      ramShape.lineTo(0.06, -h + 0.028);
+      ramShape.lineTo(0.085, -h + 0.028);
+      ramShape.lineTo(0.085, -h);
+      ramShape.lineTo(w, -h);
+      // Right edge with 2 semicircular retention latch notches
+      ramShape.lineTo(w, -0.04);
+      ramShape.absarc(w, -0.015, 0.025, -Math.PI / 2, Math.PI / 2, true);
+      ramShape.lineTo(w, 0.06);
+      ramShape.absarc(w, 0.085, 0.025, -Math.PI / 2, Math.PI / 2, true);
+      ramShape.lineTo(w, h);
+      // Top edge
+      ramShape.lineTo(-w, h);
+      // Left edge with 2 semicircular retention latch notches
+      ramShape.lineTo(-w, 0.085 + 0.025);
+      ramShape.absarc(-w, 0.085, 0.025, Math.PI / 2, -Math.PI / 2, true);
+      ramShape.lineTo(-w, -0.015 + 0.025);
+      ramShape.absarc(-w, -0.015, 0.025, Math.PI / 2, -Math.PI / 2, true);
+      ramShape.closePath();
+
+      // 2 End Mounting Holes
+      [[-w + 0.042, h - 0.042], [w - 0.042, h - 0.042], [-w + 0.042, -h + 0.055], [w - 0.042, -h + 0.055]].forEach(([hx, hy]) => {
+        const hole = new THREE.Path();
+        hole.absarc(hx, hy, 0.016, 0, Math.PI * 2, true);
+        ramShape.holes.push(hole);
+      });
+
+      const pcbGeo = CAD.extrudeBeveled(ramShape, 0.022, 0.0025, 2, 20);
+      const pcbMesh = new THREE.Mesh(pcbGeo, mat.greenPCB);
+      pcbMesh.name = `${namePrefix}_PCB`;
+      stickGroup.add(pcbMesh);
+
+      // 6B. Individual Gold Edge Contact Fingers along Bottom Connector Edge
+      const fingersGroup = new THREE.Group();
+      fingersGroup.name = `${namePrefix}_Gold_Edge_Fingers`;
+      const fingerGeo = new THREE.BoxGeometry(0.011, 0.052, 0.027);
+      for (let f = -48; f <= 48; f++) {
+        const fx = f * 0.0168;
+        // Skip the key notch and outer margins
+        if (fx > 0.045 && fx < 0.10) continue;
+        if (Math.abs(fx) > 0.81) continue;
+        const finger = new THREE.Mesh(fingerGeo, mat.goldContacts);
+        finger.position.set(fx, -h + 0.024, 0);
+        fingersGroup.add(finger);
+      }
+      stickGroup.add(fingersGroup);
+
+      // 6C. 8 Matte-Black DRAM IC Chips with Silver Gull-Wing Leads, SPD Chip & Micro-Capacitors
+      const chipsGroup = new THREE.Group();
+      chipsGroup.name = `${namePrefix}_DRAM_Chips_8x`;
+      const chipX = [-0.69, -0.515, -0.34, -0.165, 0.185, 0.36, 0.535, 0.71];
+
+      chipX.forEach((cx) => {
+        const icBody = CAD.beveledBox(0.135, 0.21, 0.022, 0.005, 0.002, mat.icEpoxyBlack);
+        icBody.position.set(cx, 0.032, 0.018);
+        chipsGroup.add(icBody);
+
+        // Tiny metallic IC pins along left/right edges of each DRAM package
+        for (let p = -6; p <= 6; p++) {
+          const pinRow = new THREE.Mesh(new THREE.BoxGeometry(0.152, 0.006, 0.012), mat.chromeMetal);
+          pinRow.position.set(cx, 0.032 + p * 0.014, 0.013);
+          chipsGroup.add(pinRow);
+        }
+      });
+
+      // Central 8-Pin SPD EEPROM Chip & Tiny SMD Ceramic Resistors
+      const spdChip = CAD.beveledBox(0.052, 0.072, 0.02, 0.003, 0.001, mat.icEpoxyBlack);
+      spdChip.position.set(0.01, 0.02, 0.018);
+      chipsGroup.add(spdChip);
+
+      for (let r = -26; r <= 26; r++) {
+        if (r >= -1 && r <= 2) continue;
+        const smd = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.022, 0.014), mat.goldContacts);
+        smd.position.set(r * 0.03, -0.125, 0.015);
+        chipsGroup.add(smd);
+      }
+
+      stickGroup.add(chipsGroup);
+      stickGroup.position.set(zOffset * 0.42, zOffset < 0 ? 0.08 : -0.05, zOffset);
+      setExplodeOffset(stickGroup, 0, zOffset > 0 ? 0.25 : -0.25, explodeZ);
+      return stickGroup;
+    }
+
+    function buildRAMModulesModel() {
+      const root = new THREE.Group();
+      root.name = 'RAM_Modules_DualKit';
+
+      const stickA = buildSingleRAMStick('DIMM_Module_Front', 0.20, 0.36);
+      const stickB = buildSingleRAMStick('DIMM_Module_Rear', -0.20, -0.36);
+      root.add(stickA, stickB);
+
+      return root;
+    }
+
+    // ============================================================================
+    // MODEL 7: Silver ATX Power Supply with Cables (PSU.glb)
+    // ============================================================================
+    function buildPSUModel() {
+      const mat = createPBRMaterials();
+      const root = new THREE.Group();
+      root.name = 'ATX_Power_Supply_PSU';
+
+      // 7A. Brushed Silver Sheet-Metal Enclosure with See-Through Rear Honeycomb & Internal Coils
+      const chassisGroup = new THREE.Group();
+      chassisGroup.name = 'PSU_Brushed_Silver_Housing';
+
+      // Build Hollow Enclosure Walls so Rear Honeycomb Exhaust is Truly See-Through!
+      const wallBottom = CAD.beveledBox(1.26, 0.03, 1.18, 0.01, 0.004, mat.silverAluminum, 'y');
+      wallBottom.position.set(0, -0.35, 0);
+      const wallLeft = CAD.beveledBox(0.03, 0.72, 1.18, 0.01, 0.004, mat.silverAluminum, 'x');
+      wallLeft.position.set(-0.615, 0, 0);
+      const wallRight = CAD.beveledBox(0.03, 0.72, 1.18, 0.01, 0.004, mat.silverAluminum, 'x');
+      wallRight.position.set(0.615, 0, 0);
+      const wallBack = CAD.beveledBox(1.26, 0.72, 0.03, 0.01, 0.004, mat.silverAluminum);
+      wallBack.position.set(0, 0, -0.575);
+
+      // Top Panel with Circular 120mm Fan Cutout
+      const topShape = CAD.roundedRectShape(1.26, 1.18, 0.02);
+      const fanCut = new THREE.Path();
+      fanCut.absarc(0, 0, 0.48, 0, Math.PI * 2, true);
+      topShape.holes.push(fanCut);
+      const topGeo = CAD.extrudeBeveled(topShape, 0.03, 0.005, 2, 48);
+      topGeo.rotateX(Math.PI / 2);
+      const wallTop = new THREE.Mesh(topGeo, mat.silverAluminum);
+      wallTop.position.set(0, 0.35, 0);
+
+      // Stamped Vertical Louver Indents on Side Walls (matching reference image)
+      [-0.36, 0.36].forEach((sz) => {
+        const indent = CAD.beveledBox(0.036, 0.28, 0.045, 0.008, 0.003, mat.brushedNickel, 'x');
+        indent.position.set(-0.615, 0.02, sz);
+        chassisGroup.add(indent);
+      });
+
+      // Rear See-Through Perforated Silver Honeycomb Exhaust Plate + Solid Perimeter Frame
+      const rearFrameShape = CAD.roundedRectShape(1.26, 0.72, 0.018);
+      const meshWin = new THREE.Path();
+      meshWin.moveTo(-0.55, -0.28);
+      meshWin.lineTo(0.16, -0.28);
+      meshWin.lineTo(0.16, 0.28);
+      meshWin.lineTo(-0.55, 0.28);
+      meshWin.closePath();
+      rearFrameShape.holes.push(meshWin);
+      const rearFrameGeo = CAD.extrudeBeveled(rearFrameShape, 0.025, 0.004, 2, 16);
+      const rearFrame = new THREE.Mesh(rearFrameGeo, mat.silverAluminum);
+      rearFrame.position.set(0, 0, 0.58);
+
+      const honeycombPlate = new THREE.Mesh(new THREE.PlaneGeometry(1.16, 0.64), mat.honeycombSilver);
+      honeycombPlate.position.set(0, 0, 0.58);
+
+      // Detailed Internal PSU Components (Yellow Main Transformer, Copper Toroids, Filter Caps & Heatsinks)
+      const internals = new THREE.Group();
+      internals.name = 'PSU_Internal_Transformers_And_Coils';
+      const darkInteriorFloor = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.02, 1.10), mat.greenPCB);
+      darkInteriorFloor.position.set(0, -0.32, 0);
+      const yellowTransformer = CAD.beveledBox(0.32, 0.42, 0.32, 0.02, 0.008, mat.wireYellow);
+      yellowTransformer.position.set(-0.08, -0.06, 0.28);
+      const copperCoil1 = new THREE.Mesh(new THREE.TorusGeometry(0.125, 0.048, 16, 28), mat.copperHeatpipe);
+      copperCoil1.position.set(-0.36, -0.08, 0.34);
+      const copperCoil2 = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.035, 14, 24), mat.copperHeatpipe);
+      copperCoil2.position.set(0.18, -0.12, 0.32);
+      const internalHeatsink = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.48, 0.75), mat.silverAluminum);
+      internalHeatsink.position.set(-0.22, -0.04, 0);
+      internals.add(darkInteriorFloor, yellowTransformer, copperCoil1, copperCoil2, internalHeatsink);
+
+      chassisGroup.add(wallBottom, wallLeft, wallRight, wallBack, wallTop, rearFrame, honeycombPlate, internals);
+      setExplodeOffset(chassisGroup, 0, -0.22, 0);
+      root.add(chassisGroup);
+
+      // 7B. Top 120mm Black 7-Blade Fan & Concentric Chrome Wire Finger Guard Grille
+      const fanAndGrille = new THREE.Group();
+      fanAndGrille.name = 'PSU_Top_Fan_And_Chrome_Grille';
+
+      // Internal 7-Blade Impeller spinning inside PSU top cutout
+      const psuRotor = new THREE.Group();
+      psuRotor.position.set(0, 0.26, 0);
+      psuRotor.rotation.x = Math.PI / 2;
+      psuRotor.userData.spinZ = true;
+      const psuHub = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.14, 32).rotateX(Math.PI / 2), mat.icEpoxyBlack);
+      psuRotor.add(psuHub);
+      const psuBladeProto = CAD.createSweptAirfoilBlade(0.17, 0.45, 0.21, 0.52, -0.35, mat.matteBlackPlastic);
+      for (let b = 0; b < 7; b++) {
+        const bl = psuBladeProto.clone();
+        bl.rotation.z = (b / 7) * Math.PI * 2;
+        psuRotor.add(bl);
+      }
+      fanAndGrille.add(psuRotor);
+
+      // 7 Concentric Chrome Wire Rings + Cross Struts + 4 Corner Mounting Screws
+      for (let r = 1; r <= 7; r++) {
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(r * 0.064, 0.0085, 12, 48).rotateX(Math.PI / 2),
+          mat.chromeMetal
+        );
+        ring.position.set(0, 0.372, 0);
+        fanAndGrille.add(ring);
+      }
+      for (let s = 0; s < 2; s++) {
+        const bar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.009, 0.009, 1.06, 10).rotateZ(Math.PI / 2),
+          mat.chromeMetal
+        );
+        bar.rotation.y = (s * Math.PI) / 2 + Math.PI / 4;
+        bar.position.set(0, 0.374, 0);
+        fanAndGrille.add(bar);
+      }
+      // 4 Corner Phillips Fasteners on Top Panel
+      [[-0.38, -0.38], [0.38, -0.38], [-0.38, 0.38], [0.38, 0.38], [-0.54, -0.48], [0.54, 0.48]].forEach(([sx, sz]) => {
+        const screw = CAD.createFastener(0.032, 0.016, mat.chromeMetal, mat.icEpoxyBlack);
+        screw.position.set(sx, 0.368, sz);
+        fanAndGrille.add(screw);
+      });
+
+      setExplodeOffset(fanAndGrille, 0, 0.46, 0);
+      root.add(fanAndGrille);
+
+      // 7C. Rear IEC C14 3-Prong AC Inlet Socket & I/O Rocker Power Switch
+      const acSwitchGroup = new THREE.Group();
+      acSwitchGroup.name = 'PSU_IEC_Inlet_And_RockerSwitch';
+
+      const iecBezel = CAD.beveledBox(0.32, 0.22, 0.05, 0.025, 0.006, mat.matteBlackPlastic);
+      iecBezel.position.set(0.36, 0.08, 0.59);
+      const iecCavity = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.14, 0.055), mat.icEpoxyBlack);
+      iecCavity.position.set(0.36, 0.08, 0.595);
+      acSwitchGroup.add(iecBezel, iecCavity);
+
+      // 3 Brass/Chrome IEC C14 Male Prongs
+      [[-0.055, -0.02], [0, 0.028], [0.055, -0.02]].forEach(([px, py]) => {
+        const prong = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.038, 0.045), mat.chromeMetal);
+        prong.position.set(0.36 + px, 0.08 + py, 0.605);
+        acSwitchGroup.add(prong);
+      });
+
+      // Molded Black Rocker Switch Housing & Tilted Rocker Button
+      const swHousing = CAD.beveledBox(0.20, 0.13, 0.045, 0.01, 0.004, mat.matteBlackPlastic);
+      swHousing.position.set(0.36, -0.15, 0.59);
+      const swRocker = CAD.beveledBox(0.15, 0.085, 0.04, 0.006, 0.003, mat.icEpoxyBlack);
+      swRocker.position.set(0.36, -0.15, 0.608);
+      swRocker.rotation.y = 0.18;
+      acSwitchGroup.add(swHousing, swRocker);
+
+      setExplodeOffset(acSwitchGroup, 0, 0, 0.42);
+      root.add(acSwitchGroup);
+
+      // 7D. Multi-Colored ATX Output Cable Harness, Zip-Ties & Black Molex/ATX Connectors
+      const harnessGroup = new THREE.Group();
+      harnessGroup.name = 'PSU_MultiColor_Cable_Harness';
+
+      const wireMats = [mat.wireYellow, mat.wireRed, mat.wireBlack, mat.wireOrange, mat.wirePurple];
+      for (let w = 0; w < 24; w++) {
+        const spread = (w - 11.5) * 0.022;
+        const curve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(-0.62, -0.10, -0.32 + spread * 0.35),
+          new THREE.Vector3(-0.92, -0.12 + Math.sin(w * 1.3) * 0.05, -0.22 + spread * 0.6),
+          new THREE.Vector3(-1.04 + Math.cos(w) * 0.04, -0.21, 0.15 + spread * 0.9),
+          new THREE.Vector3(-0.82 + (w % 5) * 0.075, -0.29 - (w % 3) * 0.03, 0.54 + (w % 4) * 0.07)
+        ]);
+        const wireTube = new THREE.Mesh(new THREE.TubeGeometry(curve, 32, 0.0135, 8, false), wireMats[w % 5]);
+        harnessGroup.add(wireTube);
+      }
+
+      // Black Cable Tie Wraps along Bundle
+      [[-0.90, -0.13, -0.14], [-1.01, -0.20, 0.12], [-0.90, -0.26, 0.36]].forEach(([tx, ty, tz]) => {
+        const tie = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.015, 10, 24), mat.icEpoxyBlack);
+        tie.position.set(tx, ty, tz);
+        tie.rotation.x = 0.35;
+        harnessGroup.add(tie);
+      });
+
+      // Molded Black 24-Pin ATX, 8-Pin PCIe, and 4-Pin Molex Connectors with Pin Cavities
+      const atx24Conn = CAD.beveledBox(0.34, 0.11, 0.14, 0.008, 0.003, mat.matteBlackPlastic);
+      atx24Conn.position.set(-0.68, -0.28, 0.58);
+      atx24Conn.rotation.y = 0.42;
+
+      const molexConn1 = CAD.beveledBox(0.22, 0.08, 0.12, 0.006, 0.003, mat.matteBlackPlastic);
+      molexConn1.position.set(-0.92, -0.34, 0.68);
+      molexConn1.rotation.y = 0.22;
+
+      const molexConn2 = CAD.beveledBox(0.20, 0.08, 0.12, 0.006, 0.003, mat.matteBlackPlastic);
+      molexConn2.position.set(-1.08, -0.30, 0.55);
+      molexConn2.rotation.y = -0.15;
+
+      harnessGroup.add(atx24Conn, molexConn1, molexConn2);
+      setExplodeOffset(harnessGroup, -0.52, 0, 0.22);
+      root.add(harnessGroup);
+
+      return root;
+    }
+
+    // ============================================================================
+    // MODEL 8: Standalone 3.5-Inch Mechanical SATA Hard Drive (HDD.glb)
+    // ============================================================================
+    function buildHDDModel() {
+      const mat = createPBRMaterials();
+      const root = new THREE.Group();
+      root.name = 'Mechanical_SATA_HDD';
+
+      // 8A. CNC-Machined Matte-Black Cast Aluminum Chassis with Side Stainless Thread Inserts
+      const bodyGroup = new THREE.Group();
+      bodyGroup.name = 'HDD_Cast_Black_Enclosure';
+
+      const baseShape = CAD.roundedRectShape(1.14, 1.58, 0.035);
+      const baseGeo = CAD.extrudeBeveled(baseShape, 0.22, 0.008, 3, 24);
+      baseGeo.rotateX(Math.PI / 2);
+      const baseBlock = new THREE.Mesh(baseGeo, mat.matteBlackPlastic);
+      bodyGroup.add(baseBlock);
+
+      // 6 Side Stainless-Steel Threaded Mounting Bosses
+      [-0.572, 0.572].forEach((sx) => {
+        [-0.58, 0.04, 0.58].forEach((sz) => {
+          const boss = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.038, 0.038, 0.022, 20).rotateZ(Math.PI / 2),
+            mat.chromeMetal
+          );
+          boss.position.set(sx, -0.02, sz);
+          const hole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.02, 0.026, 16).rotateZ(Math.PI / 2),
+            mat.icEpoxyBlack
+          );
+          hole.position.set(sx, -0.02, sz);
+          bodyGroup.add(boss, hole);
+        });
+      });
+
+      setExplodeOffset(bodyGroup, 0, -0.28, 0);
+      root.add(bodyGroup);
+
+      // 8B. Internal Mirror-Chrome Magnetic Platters & Voice-Coil Actuator Arm (Revealed when exploded!)
+      const platterGroup = new THREE.Group();
+      platterGroup.name = 'HDD_Internal_Platter_And_Actuator';
+
+      const platter = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.47, 0.022, 56), mat.chromeMetal);
+      platter.position.set(0, 0.11, -0.14);
+      const spindleClamp = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.035, 32), mat.brushedNickel);
+      spindleClamp.position.set(0, 0.12, -0.14);
+
+      const armShape = new THREE.Shape();
+      armShape.moveTo(0, -0.04);
+      armShape.lineTo(0.42, -0.012);
+      armShape.lineTo(0.42, 0.012);
+      armShape.lineTo(0, 0.04);
+      armShape.closePath();
+      const armGeo = CAD.extrudeBeveled(armShape, 0.015, 0.002, 1, 12);
+      armGeo.rotateX(Math.PI / 2);
+      const actuatorArm = new THREE.Mesh(armGeo, mat.silverAluminum);
+      actuatorArm.position.set(-0.22, 0.13, 0.36);
+      actuatorArm.rotation.y = 0.85;
+
+      platterGroup.add(platter, spindleClamp, actuatorArm);
+      setExplodeOffset(platterGroup, 0, 0.06, 0);
+      root.add(platterGroup);
+
+      // 8C. Contoured Stamped Brushed Stainless-Steel Top Shield Cover with Embossed Channels & 6 Torx Screws
+      const coverGroup = new THREE.Group();
+      coverGroup.name = 'HDD_Stamped_Stainless_Top_Shield';
+
+      // Outer Stamped Flange Plate with Scalloped Screw Notches
+      const outerCoverShape = CAD.roundedRectShape(1.09, 1.53, 0.04);
+      const outerCoverGeo = CAD.extrudeBeveled(outerCoverShape, 0.022, 0.005, 3, 24);
+      outerCoverGeo.rotateX(Math.PI / 2);
+      const outerCover = new THREE.Mesh(outerCoverGeo, mat.brushedNickel);
+      outerCover.position.y = 0.125;
+      coverGroup.add(outerCover);
+
+      // Contoured Raised Inner Embossed Deck (Matching the exact stamped profile in Image 8)
+      const deckShape = new THREE.Shape();
+      deckShape.moveTo(-0.34, -0.68);
+      deckShape.lineTo(0.34, -0.68);
+      deckShape.quadraticCurveTo(0.46, -0.56, 0.46, -0.38);
+      deckShape.lineTo(0.46, -0.14);
+      deckShape.quadraticCurveTo(0.36, 0.02, 0.46, 0.18);
+      deckShape.lineTo(0.46, 0.48);
+      deckShape.quadraticCurveTo(0.35, 0.66, 0.22, 0.66);
+      deckShape.lineTo(-0.22, 0.66);
+      deckShape.quadraticCurveTo(-0.35, 0.66, -0.46, 0.48);
+      deckShape.lineTo(-0.46, 0.18);
+      deckShape.quadraticCurveTo(-0.36, 0.02, -0.46, -0.14);
+      deckShape.lineTo(-0.46, -0.38);
+      deckShape.quadraticCurveTo(-0.46, -0.56, -0.34, -0.68);
+
+      const deckGeo = CAD.extrudeBeveled(deckShape, 0.024, 0.012, 4, 28);
+      deckGeo.rotateX(Math.PI / 2);
+      const raisedDeck = new THREE.Mesh(deckGeo, mat.brushedNickel);
+      raisedDeck.position.y = 0.145;
+      coverGroup.add(raisedDeck);
+
+      // Central Spindle Circular Stamped Ring & Lower Actuator Pivot Ring
+      const spindleRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.21, 0.022, 16, 48).rotateX(Math.PI / 2),
+        mat.brushedNickel
+      );
+      spindleRing.position.set(0, 0.16, -0.14);
+      const spindleCap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.025, 36), mat.brushedNickel);
+      spindleCap.position.set(0, 0.158, -0.14);
+
+      const actuatorRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.125, 0.018, 16, 40).rotateX(Math.PI / 2),
+        mat.brushedNickel
+      );
+      actuatorRing.position.set(-0.05, 0.16, 0.36);
+      const actuatorCap = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.10, 0.025, 32), mat.brushedNickel);
+      actuatorCap.position.set(-0.05, 0.158, 0.36);
+
+      coverGroup.add(spindleRing, spindleCap, actuatorRing, actuatorCap);
+
+      // 6 Perimeter Pan-Head Torx Screws
+      [
+        [-0.47, -0.68], [0.47, -0.68],
+        [-0.46, 0.02], [0.46, 0.02],
+        [-0.47, 0.68], [0.47, 0.68]
+      ].forEach(([tx, tz]) => {
+        const screw = CAD.createFastener(0.038, 0.022, mat.chromeMetal, mat.icEpoxyBlack);
+        screw.position.set(tx, 0.148, tz);
+        coverGroup.add(screw);
+      });
+
+      setExplodeOffset(coverGroup, 0, 0.38, 0);
+      root.add(coverGroup);
+
+      // 8D. Front/Rear Keyed L-Shaped SATA Data (7-Pin), SATA Power (15-Pin) & 8-Pin Jumper Block
+      const sataGroup = new THREE.Group();
+      sataGroup.name = 'HDD_SATA_Data_Power_And_Jumpers';
+
+      const connBlock = CAD.beveledBox(0.96, 0.11, 0.09, 0.006, 0.002, mat.icEpoxyBlack);
+      connBlock.position.set(0, -0.035, 0.775);
+      sataGroup.add(connBlock);
+
+      // L-Shaped SATA Power & Data Tongues + Gold Jumper Pins
+      const sataPowerTongue = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.018, 0.06), mat.matteBlackPlastic);
+      sataPowerTongue.position.set(-0.28, -0.035, 0.80);
+      const sataDataTongue = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.018, 0.06), mat.matteBlackPlastic);
+      sataDataTongue.position.set(-0.02, -0.035, 0.80);
+      sataGroup.add(sataPowerTongue, sataDataTongue);
+
+      // Recessed Jumper Cavity with 2x4 Gold Pins
+      const jumperCavity = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.065, 0.05), mat.chassisBlackSteel);
+      jumperCavity.position.set(0.28, -0.035, 0.80);
+      sataGroup.add(jumperCavity);
+
+      for (let p = 0; p < 5; p++) {
+        const pinTop = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.055), mat.goldContacts);
+        pinTop.position.set(0.19 + p * 0.042, -0.022, 0.805);
+        const pinBot = pinTop.clone();
+        pinBot.position.y = -0.048;
+        sataGroup.add(pinTop, pinBot);
+      }
+
+      setExplodeOffset(sataGroup, 0, 0, 0.36);
+      root.add(sataGroup);
+
+      return root;
+    }
+
+    // ============================================================================
+    // MODEL 9: Standalone Silver DVD Optical Drive (DVD_Drive.glb)
+    // ============================================================================
+    function buildDVDDriveModel() {
+      const mat = createPBRMaterials();
+      const root = new THREE.Group();
+      root.name = 'DVD_Optical_Drive';
+
+      // 9A. Stamped Galvanized Silver Steel 5.25" Enclosure with Circular Spindle Clamp Depression
+      const chassisGroup = new THREE.Group();
+      chassisGroup.name = 'DVD_Stamped_Silver_Enclosure';
+
+      const silverBody = CAD.beveledBox(1.46, 0.42, 1.66, 0.015, 0.006, mat.silverAluminum);
+      chassisGroup.add(silverBody);
+
+      // Top Stamped Contoured U-Rib & Central Circular Spindle Clamp Depression (matching Image 9)
+      const outerRibRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.46, 0.026, 16, 56).rotateX(Math.PI / 2),
+        mat.brushedNickel
+      );
+      outerRibRing.position.set(0, 0.21, -0.04);
+
+      const innerSpindleDisc = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.29, 0.018, 48), mat.brushedNickel);
+      innerSpindleDisc.position.set(0, 0.208, -0.04);
+      const innerSpindleRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.285, 0.012, 12, 48).rotateX(Math.PI / 2),
+        mat.chromeMetal
+      );
+      innerSpindleRing.position.set(0, 0.215, -0.04);
+
+      // Front & Rear Horizontal Stamped Stiffening Channels
+      [-0.62, 0.52].forEach((rz) => {
+        const rib = CAD.beveledBox(0.98, 0.024, 0.085, 0.02, 0.006, mat.brushedNickel, 'y');
+        rib.position.set(0, 0.212, rz);
+        chassisGroup.add(rib);
+      });
+
+      // Side Mounting Screw Holes & Black Plastic Snap Locking Tabs
+      [-0.732, 0.732].forEach((sx) => {
+        [-0.52, 0.35].forEach((sz) => {
+          const holeTop = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.024, 0.024, 0.015, 16).rotateZ(Math.PI / 2),
+            mat.icEpoxyBlack
+          );
+          holeTop.position.set(sx, 0.08, sz);
+          const holeBot = holeTop.clone();
+          holeBot.position.y = -0.10;
+          chassisGroup.add(holeTop, holeBot);
+        });
+        const snapTab = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.12, 0.06), mat.icEpoxyBlack);
+        snapTab.position.set(sx, -0.02, 0.68);
+        chassisGroup.add(snapTab);
+      });
+
+      chassisGroup.add(outerRibRing, innerSpindleDisc, innerSpindleRing);
+      setExplodeOffset(chassisGroup, 0, 0, -0.35);
+      root.add(chassisGroup);
+
+      // 9B. Matte-Black Textured ABS Front Bezel, Eject Button with Triangle Icon, Pinhole & Status LED
+      const bezelGroup = new THREE.Group();
+      bezelGroup.name = 'DVD_Front_Black_ABS_Bezel';
+
+      const bezelFrame = CAD.beveledBox(1.50, 0.44, 0.095, 0.012, 0.005, mat.matteBlackPlastic);
+      bezelFrame.position.set(0, 0, 0.855);
+      bezelGroup.add(bezelFrame);
+
+      // Recessed Tray Cutout Border
+      const trayRecess = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.175, 0.03), mat.icEpoxyBlack);
+      trayRecess.position.set(0, 0.055, 0.892);
+      bezelGroup.add(trayRecess);
+
+      // Tactile Eject Button with Embossed Eject Symbol
+      const ejectBtn = CAD.beveledBox(0.18, 0.058, 0.032, 0.008, 0.003, mat.icEpoxyBlack);
+      ejectBtn.position.set(0.46, -0.115, 0.905);
+      ejectBtn.name = 'DVD_Eject_Button';
+      bezelGroup.add(ejectBtn);
+
+      // Emergency Eject Pinhole & Rectangular Status LED Lens
+      const pinhole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.014, 0.014, 0.02, 16).rotateX(Math.PI / 2),
+        mat.icEpoxyBlack
+      );
+      pinhole.position.set(0.28, -0.115, 0.902);
+
+      const ledLens = CAD.beveledBox(0.055, 0.026, 0.018, 0.004, 0.002, mat.slotBlue);
+      ledLens.position.set(0.16, -0.115, 0.902);
+
+      bezelGroup.add(pinhole, ledLens);
+      setExplodeOffset(bezelGroup, 0, 0, 0.28);
+      root.add(bezelGroup);
+
+      // 9C. Motorized Disc Tray Drawer with 120mm Disc Recess & Laser Lens Pickup (Animatable!)
+      const trayGroup = new THREE.Group();
+      trayGroup.name = 'DVD_Motorized_Disc_Tray';
+      trayGroup.userData.slideZ = true;
+
+      const trayFrontDoor = CAD.beveledBox(1.32, 0.155, 0.035, 0.006, 0.003, mat.matteBlackPlastic);
+      trayFrontDoor.position.set(0, 0.055, 0.902);
+      trayGroup.add(trayFrontDoor);
+
+      // Molded Disc Platter Bed with Circular 120mm Optical Disc Well
+      const trayBed = CAD.beveledBox(1.24, 0.032, 1.32, 0.01, 0.003, mat.matteBlackPlastic, 'y');
+      trayBed.position.set(0, 0.015, 0.22);
+
+      const discWell = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.012, 48), mat.icEpoxyBlack);
+      discWell.position.set(0, 0.028, 0.24);
+      const laserSled = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 24), mat.slotBlue);
+      laserSled.position.set(-0.14, 0.032, 0.24);
+
+      trayGroup.add(trayBed, discWell, laserSled);
+      setExplodeOffset(trayGroup, 0, 0.04, 0.68);
+      root.add(trayGroup);
+
+      return root;
+    }
+
+    // ============================================================================
+    // 4. ASSET REGISTRY & CLASSROOM TRAINING CALLOUT ANNOTATIONS
+    // ============================================================================
+    const HARDWARE_REGISTRY = [
+      {
+        id: 'Case_Fan',
+        filename: 'Case_Fan.glb',
+        title: '1. Black PC Cooling Fan',
+        subtitle: 'Swept 7-Blade Impeller, Venturi Frame & Keyed 2-Pin Lead',
+        builder: buildCaseFanModel,
+        camPos: [1.32, 0.85, 1.78],
+        callouts: [
+          { pos: [0, 0, 0.12], tag: '7-Blade Swept Impeller', desc: 'Aerodynamic curved airfoil blades spun by a central brushless DC hub motor to maximize static pressure and airflow (CFM).' },
+          { pos: [-0.475, 0.475, 0.12], tag: '120mm Mounting Flange', desc: 'Standardized 105mm hole-to-hole corner spacing with structural webbing ribs for case or radiator screws.' },
+          { pos: [-0.35, -0.58, 0.40], tag: 'Keyed 2-Pin Power Header', desc: 'Red (+12V DC) and Black (Ground) power lead with a polarized white Molex housing and gold contact pins.' }
+        ]
+      },
+      {
+        id: 'PC_Case',
+        filename: 'PC_Case.glb',
+        title: '2. Open-Sided Mid-Tower Case',
+        subtitle: 'ATX Tray with Cutouts, Brass Standoffs, Cages & Mesh Front',
+        builder: buildPCCaseModel,
+        camPos: [2.15, 1.05, 2.25],
+        callouts: [
+          { pos: [-0.15, 0.40, -0.35], tag: 'ATX Tray & Brass Standoffs', desc: 'Recessed steel motherboard tray with 9 hexagonal brass standoffs and a large cutout for CPU cooler backplate access.' },
+          { pos: [0.95, 0.62, 0], tag: '5.25" Optical & Mesh Bays', desc: 'Top 4 removable brushed bay covers for optical drives and bottom 4 perforated honeycomb intake grilles.' },
+          { pos: [0.58, -0.50, 0.25], tag: '3.5" Internal HDD Cage', desc: 'Lower drive bay cage holding 3.5-inch mechanical hard drives directly behind the front intake airflow path.' },
+          { pos: [-0.86, -0.05, 0.15], tag: '7x PCIe Expansion Slots', desc: 'Ventilated rear expansion brackets with thumbscrews for securing dedicated GPUs and add-in PCIe cards.' }
+        ]
+      },
+      {
+        id: 'CPU_Cooler',
+        filename: 'CPU_Cooler.glb',
+        title: '3. Tower CPU Cooler',
+        subtitle: '42 Contoured Aluminum Fins, 4 Copper Heatpipes & PWM Fan',
+        builder: buildCPUCoolerModel,
+        camPos: [1.48, 0.88, 1.78],
+        callouts: [
+          { pos: [0, -0.66, 0.15], tag: 'Milled Cold-Plate & Spring Screws', desc: 'Precision-milled base absorbs heat from the CPU IHS and applies even mounting pressure via 4 spring-loaded captive screws.' },
+          { pos: [0.32, -0.48, 0.12], tag: '4x Copper U-Heatpipes', desc: 'Sintered copper phase-change pipes rapidly conduct thermal energy upward from the CPU base into the aluminum fin stack.' },
+          { pos: [0.58, 0.35, -0.04], tag: '42x Stamped Aluminum Fins', desc: 'High-surface-area stamped aluminum array dissipates heat into the airstream pushed by the front 120mm PWM fan.' }
+        ]
+      },
+      {
+        id: 'CPU',
+        filename: 'CPU.glb',
+        title: '4. Desktop CPU Processor',
+        subtitle: 'Stepped Brushed Nickel IHS, FR4 Notched PCB & Gold LGA',
+        builder: buildCPUModel,
+        camPos: [1.12, 1.08, 1.28],
+        callouts: [
+          { pos: [0, 0.11, 0], tag: 'Brushed Nickel IHS', desc: 'Integrated Heat Spreader (IHS) protects the fragile internal silicon die and distributes heat evenly to the CPU cooler.' },
+          { pos: [-0.58, 0.03, 0.58], tag: 'Pin-1 Gold Alignment Triangle', desc: 'Critical classroom installation marker: must align with the matching triangle on the motherboard CPU socket.' },
+          { pos: [0.64, 0.02, -0.28], tag: 'Semicircular Keying Notches', desc: 'Prevent incorrect orientation inside the LGA socket frame during processor installation.' }
+        ]
+      },
+      {
+        id: 'Motherboard',
+        filename: 'Motherboard.glb',
+        title: '5. Green ATX Motherboard',
+        subtitle: 'LGA Socket, 4 Dual-Channel DIMMs, PCIe, VRM Chokes & Rear I/O',
+        builder: buildMotherboardModel,
+        camPos: [1.68, 1.55, 1.78],
+        callouts: [
+          { pos: [-0.22, 0.08, -0.32], tag: 'LGA CPU Socket & Lever', desc: 'Land Grid Array processor socket with hinged nickel load plate, locking lever, and surrounding VRM copper chokes.' },
+          { pos: [0.42, 0.10, -0.28], tag: '4x Dual-Channel DIMM Slots', desc: 'Color-coded Blue and Black DDR memory slots with white ejector latches; populate matching colors for dual-channel bandwidth.' },
+          { pos: [-0.08, 0.08, 0.31], tag: 'PCIe x16 & Legacy PCI Slots', desc: 'Black high-speed PCIe x16 graphics card slot with retention latch alongside white PCIe x1 and legacy PCI slots.' },
+          { pos: [-0.88, 0.22, -0.20], tag: 'Rear I/O Shield Cluster', desc: 'Integrated PS/2, Parallel (Magenta), Serial (Teal), stacked USB/Ethernet towers, and 3-channel audio jacks.' }
+        ]
+      },
+      {
+        id: 'RAM_Modules',
+        filename: 'RAM_Modules.glb',
+        title: '6. Desktop DDR RAM Pair',
+        subtitle: 'Notched Green PCBs, Individual Gold Fingers, 16 DRAM ICs & SPD',
+        builder: buildRAMModulesModel,
+        camPos: [1.28, 0.78, 1.55],
+        callouts: [
+          { pos: [-0.34, 0.03, 0.22], tag: 'Surface-Mount DRAM ICs', desc: '8 synchronous dynamic RAM memory packages per module with gull-wing leads and micro decoupling capacitors.' },
+          { pos: [0.07, -0.18, 0.20], tag: '240-Pin Gold Edge & Key Notch', desc: 'Asymmetric voltage key notch ensures the DDR module only inserts one way and prevents mixing incompatible DDR generations.' },
+          { pos: [0.01, 0.02, 0.22], tag: 'SPD EEPROM Chip', desc: 'Serial Presence Detect chip stores factory memory timings, clock profiles (XMP/JEDEC), and capacity data for the BIOS.' }
+        ]
+      },
+      {
+        id: 'PSU',
+        filename: 'PSU.glb',
+        title: '7. Silver ATX Power Supply',
+        subtitle: 'Chrome Finger Guard, See-Through Honeycomb Exhaust & ATX Harness',
+        builder: buildPSUModel,
+        camPos: [1.68, 1.25, 1.85],
+        callouts: [
+          { pos: [0, 0.38, 0], tag: '120mm Fan & Chrome Guard', desc: 'Top-mounted cooling fan draws air across internal heatsinks and transformers, protected by a 7-ring chrome wire grille.' },
+          { pos: [0.36, 0.02, 0.60], tag: 'IEC C14 Inlet & I/O Switch', desc: 'Standard 3-prong AC mains input socket paired with a master hard-disconnect I/O rocker switch.' },
+          { pos: [-0.75, -0.28, 0.58], tag: 'Color-Coded DC Wire Harness', desc: 'Yellow (+12V), Red (+5V), Orange (+3.3V), and Black (GND) rails terminating in 24-pin ATX and 4-pin Molex plugs.' }
+        ]
+      },
+      {
+        id: 'HDD',
+        filename: 'HDD.glb',
+        title: '8. 3.5" SATA Hard Drive',
+        subtitle: 'Contoured Stainless Top Shield, Internal Platter & L-Keyed SATA',
+        builder: buildHDDModel,
+        camPos: [1.38, 1.18, 1.55],
+        callouts: [
+          { pos: [0, 0.17, -0.14], tag: 'Stamped Stainless Top Shield', desc: 'Hermetically sealed brushed steel cover over the 7200 RPM magnetic platters, secured by 6 perimeter Torx screws.' },
+          { pos: [-0.15, -0.03, 0.80], tag: 'L-Keyed SATA Power & Data', desc: '15-pin SATA power (left, wider) and 7-pin SATA data (center, narrower) connectors with L-shaped polarization tongues.' },
+          { pos: [0.57, -0.02, 0.04], tag: '6x Side Mounting Threads', desc: 'Standard #6-32 UNC threaded stainless inserts for securing the drive inside a 3.5-inch chassis bay.' }
+        ]
+      },
+      {
+        id: 'DVD_Drive',
+        filename: 'DVD_Drive.glb',
+        title: '9. Silver DVD Optical Drive',
+        subtitle: 'Stamped Spindle Clamp Chassis, Black ABS Bezel & Motorized Tray',
+        builder: buildDVDDriveModel,
+        camPos: [1.58, 1.08, 1.78],
+        callouts: [
+          { pos: [0, 0.22, -0.04], tag: 'Spindle Clamp Depression', desc: 'Stamped circular recess houses the upper magnetic clamp that stabilizes optical discs spinning at high RPM.' },
+          { pos: [0, 0.06, 0.90], tag: 'Motorized 120mm Disc Tray', desc: 'Slides out to accept standard 120mm DVDs/CDs; toggle "Animate" in the top bar to watch the tray eject and retract.' },
+          { pos: [0.38, -0.11, 0.91], tag: 'Eject Button & Emergency Pinhole', desc: 'Tactile eject switch alongside the manual paperclip release pinhole used to retrieve discs when unpowered.' }
+        ]
+      }
+    ];
+
+    // ============================================================================
+    // 5. THREE.JS SCENE, STUDIO LIGHTING & CLASSROOM CALLOUT PROJECTOR
+    // ============================================================================
+    let scene, camera, renderer, controls, raycaster, mouse, gridHelper;
+    let currentModelGroup = null;
+    let activeAssetIndex = 0;
+    let isGridView = false;
+    let selectedMesh = null;
+    let wireframeEnabled = false;
+    let animateEnabled = true;
+    let turntableEnabled = false;
+    let calloutsEnabled = true;
+    let lightBackdropEnabled = false;
+    let explodeFactor = 0;
+    let activeCalloutEls = [];
+    let clock = new THREE.Clock();
+
+    function initThreeViewport() {
+      const container = document.getElementById('viewport-container');
+      scene = new THREE.Scene();
+
+      camera = new THREE.PerspectiveCamera(38, container.clientWidth / container.clientHeight, 0.05, 100);
+      camera.position.set(1.4, 1.0, 1.8);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.physicallyCorrectLights = true;
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.25;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      // High-Contrast Studio Softbox Environment Map for Crisp Specular Chamfer Highlights
+      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      pmremGenerator.compileCubemapShader();
+      const envScene = new THREE.Scene();
+      envScene.background = new THREE.Color(0x1e2636);
+
+      const addSoftbox = (w, h, d, x, y, z, col) => {
+        const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ color: col }));
+        box.position.set(x, y, z);
+        envScene.add(box);
+      };
+      addSoftbox(10, 0.4, 10, 0, 7, 2, 0xffffff);
+      addSoftbox(0.4, 8, 8, -7, 3, 4, 0xbae6fd);
+      addSoftbox(0.4, 8, 8, 7, 3, -3, 0xfef3c7);
+      addSoftbox(8, 6, 0.4, 0, 2, 8, 0xe2e8f0);
+
+      scene.environment = pmremGenerator.fromScene(envScene, 0.035).texture;
+
+      // Multi-Point Classroom Studio Lighting
+      const ambientLight = new THREE.AmbientLight(0xe2e8f0, 0.95);
+      scene.add(ambientLight);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 3.4);
+      keyLight.position.set(4.5, 6.5, 5.5);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.width = 2048;
+      keyLight.shadow.mapSize.height = 2048;
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0x93c5fd, 1.8);
+      fillLight.position.set(-5.5, 3.5, 3.0);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xfde68a, 2.1);
+      rimLight.position.set(1.5, -4.0, -5.5);
+      scene.add(rimLight);
+
+      gridHelper = new THREE.GridHelper(10, 40, 0x334155, 0x1e293b);
+      gridHelper.position.y = -1.02;
+      scene.add(gridHelper);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.maxDistance = 16;
+      controls.minDistance = 0.4;
+
+      raycaster = new THREE.Raycaster();
+      mouse = new THREE.Vector2();
+
+      let pointerDownPos = { x: 0, y: 0 };
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        pointerDownPos = { x: e.clientX, y: e.clientY };
+      });
+      renderer.domElement.addEventListener('pointerup', (e) => {
+        const dist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+        if (dist < 5) handleViewportClick(e);
+      });
+
+      window.addEventListener('resize', onWindowResize);
+    }
+
+    function onWindowResize() {
+      const container = document.getElementById('viewport-container');
+      if (!container || !renderer) return;
+      camera.aspect = container.clientWidth / container.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(container.clientWidth, container.clientHeight);
+    }
+
+    // ============================================================================
+    // 6. CLASSROOM CALLOUT PINS, ASSET LOADER & HIERARCHY TREE
+    // ============================================================================
+    function buildCalloutPins(asset) {
+      const overlay = document.getElementById('callout-overlay');
+      overlay.innerHTML = '';
+      activeCalloutEls = [];
+
+      if (!asset || !asset.callouts || isGridView) return;
+
+      asset.callouts.forEach((c, idx) => {
+        const el = document.createElement('div');
+        el.className = 'callout-pin flex items-center gap-1.5 group';
+        el.innerHTML = `
+          <span class="w-6 h-6 rounded-full bg-indigo-600/95 group-hover:bg-sky-500 border-2 border-white text-white text-[11px] font-bold mono flex items-center justify-center shadow-lg">
+            ${idx + 1}
+          </span>
+          <span class="px-2 py-0.5 rounded-md bg-slate-950/90 border border-indigo-400/50 text-[11px] font-medium text-indigo-100 whitespace-nowrap shadow-md">
+            ${c.tag}
+          </span>
+        `;
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          document.getElementById('lesson-part-tag').textContent = `#${idx + 1} ${c.tag}`;
+          document.getElementById('lesson-part-desc').textContent = c.desc;
+        });
+
+        overlay.appendChild(el);
+        activeCalloutEls.push({
+          el,
+          worldVec: new THREE.Vector3(...c.pos)
+        });
+      });
+
+      // Default to first callout note
+      if (asset.callouts[0]) {
+        document.getElementById('lesson-part-tag').textContent = `#1 ${asset.callouts[0].tag}`;
+        document.getElementById('lesson-part-desc').textContent = asset.callouts[0].desc;
+      }
+    }
+
+    function updateCalloutPinPositions() {
+      const overlay = document.getElementById('callout-overlay');
+      if (!calloutsEnabled || isGridView || !currentModelGroup || activeCalloutEls.length === 0) {
+        overlay.classList.add('hidden');
+        return;
+      }
+      overlay.classList.remove('hidden');
+
+      const width = renderer.domElement.clientWidth;
+      const height = renderer.domElement.clientHeight;
+      const projVec = new THREE.Vector3();
+
+      activeCalloutEls.forEach((item) => {
+        projVec.copy(item.worldVec);
+        projVec.applyMatrix4(currentModelGroup.matrixWorld);
+        projVec.project(camera);
+
+        if (projVec.z > 1) {
+          item.el.style.opacity = '0';
+          item.el.style.pointerEvents = 'none';
+        } else {
+          const x = (projVec.x * 0.5 + 0.5) * width;
+          const y = (-(projVec.y * 0.5) + 0.5) * height;
+          item.el.style.left = `${x}px`;
+          item.el.style.top = `${y}px`;
+          item.el.style.opacity = '1';
+          item.el.style.pointerEvents = 'auto';
+        }
+      });
+    }
+
+    function clearCurrentModel() {
+      if (currentModelGroup) {
+        scene.remove(currentModelGroup);
+        currentModelGroup = null;
+      }
+      selectedMesh = null;
+      document.getElementById('hud-selected-pill').classList.add('hidden');
+    }
+
+    function loadSingleAsset(index) {
+      isGridView = false;
+      activeAssetIndex = index;
+      clearCurrentModel();
+
+      const item = HARDWARE_REGISTRY[index];
+      currentModelGroup = item.builder();
+      scene.add(currentModelGroup);
+
+      explodeFactor = 0;
+      document.getElementById('slider-explode').value = 0;
+      document.getElementById('explode-val').textContent = '0%';
+
+      camera.position.set(...item.camPos);
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      applyWireframeState(currentModelGroup, wireframeEnabled);
+      updateHUDAndHierarchy(item.filename, item.subtitle);
+      buildCalloutPins(item);
+      renderAssetSidebar();
+
+      let firstMesh = null;
+      currentModelGroup.traverse((child) => {
+        if (child.isMesh && !firstMesh) firstMesh = child;
+      });
+      if (firstMesh) selectSubMesh(firstMesh);
+    }
+
+    function loadAllAssetsGrid() {
+      isGridView = true;
+      clearCurrentModel();
+
+      currentModelGroup = new THREE.Group();
+      currentModelGroup.name = 'All_9_Hardware_Models_Kit';
+
+      HARDWARE_REGISTRY.forEach((item, idx) => {
+        const col = (idx % 3) - 1;
+        const row = Math.floor(idx / 3) - 1;
+        const model = item.builder();
+        model.position.set(col * 2.5, 0, row * 2.4);
+        model.userData.basePos = model.position.clone();
+        model.userData.explodeVec = new THREE.Vector3(col * 0.4, 0, row * 0.4);
+        currentModelGroup.add(model);
+      });
+
+      scene.add(currentModelGroup);
+      camera.position.set(0, 4.6, 5.8);
+      controls.target.set(0, 0, 0);
+      controls.update();
+
+      applyWireframeState(currentModelGroup, wireframeEnabled);
+      updateHUDAndHierarchy('All_9_Hardware_Kit.glb', 'Complete 9-Piece Classroom Training 3D Hardware Collection');
+      buildCalloutPins(null);
+      renderAssetSidebar();
+    }
+
+    function updateHUDAndHierarchy(filename, subtitle) {
+      document.getElementById('hud-model-title').textContent = filename;
+      document.getElementById('export-btn-filename').textContent = filename;
+      document.getElementById('hud-model-desc').textContent = subtitle;
+
+      let meshes = 0;
+      let tris = 0;
+      let verts = 0;
+      const treeEl = document.getElementById('hierarchy-tree');
+      treeEl.innerHTML = '';
+
+      if (!currentModelGroup) return;
+
+      // Populate Top-Level Named Sub-Assemblies & Meshes
+      currentModelGroup.children.forEach((subGroup, idx) => {
+        let subTris = 0;
+        subGroup.traverse((c) => {
+          if (c.isMesh && c.geometry) {
+            meshes++;
+            const posAttr = c.geometry.attributes.position;
+            if (posAttr) {
+              verts += posAttr.count;
+              const tCount = c.geometry.index ? c.geometry.index.count / 3 : posAttr.count / 3;
+              tris += Math.round(tCount);
+              subTris += Math.round(tCount);
+            }
+          }
+        });
+
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-900/70 hover:bg-slate-800 border border-slate-800/90 cursor-pointer transition text-xs';
+        row.innerHTML = `
+          <div class="flex items-center gap-2 truncate">
+            <span class="w-2 h-2 rounded-full bg-sky-400 shrink-0"></span>
+            <span class="mono text-slate-200 truncate font-medium">${subGroup.name || 'SubMesh_' + idx}</span>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-[10px] mono text-slate-500">${subTris} tris</span>
+            <button data-toggle-idx="${idx}" class="text-slate-400 hover:text-white px-1" title="Toggle Visibility">
+              ${subGroup.visible ? '👁️' : '🚫'}
+            </button>
+          </div>
+        `;
+
+        row.addEventListener('click', (e) => {
+          if (e.target.hasAttribute('data-toggle-idx')) {
+            subGroup.visible = !subGroup.visible;
+            e.target.textContent = subGroup.visible ? '👁️' : '🚫';
+            return;
+          }
+          let targetMesh = subGroup.isMesh ? subGroup : null;
+          if (!targetMesh) {
+            subGroup.traverse((m) => {
+              if (m.isMesh && !targetMesh) targetMesh = m;
+            });
+          }
+          if (targetMesh) selectSubMesh(targetMesh, subGroup.name);
+        });
+
+        treeEl.appendChild(row);
+      });
+
+      document.getElementById('hud-mesh-count').textContent = meshes.toLocaleString();
+      document.getElementById('hud-tri-count').textContent = tris.toLocaleString();
+      document.getElementById('hud-vert-count').textContent = verts.toLocaleString();
+    }
+
+    // ============================================================================
+    // 7. SUB-MESH SELECTION, LIVE PBR EDITOR & EXPLODED VIEW
+    // ============================================================================
+    function handleViewportClick(event) {
+      if (!currentModelGroup) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(currentModelGroup.children, true);
+      if (intersects.length > 0) {
+        const hitMesh = intersects[0].object;
+        // Find top-level component group name for clearer feedback
+        let parentGroup = hitMesh;
+        while (parentGroup.parent && parentGroup.parent !== currentModelGroup) {
+          parentGroup = parentGroup.parent;
+        }
+        selectSubMesh(hitMesh, parentGroup.name || hitMesh.name);
+      }
+    }
+
+    function selectSubMesh(mesh, displayName) {
+      selectedMesh = mesh;
+      const label = displayName || mesh.name || 'Sub_Mesh';
+      document.getElementById('hud-selected-pill').classList.remove('hidden');
+      document.getElementById('hud-selected-name').textContent = label;
+      document.getElementById('mat-editor-name').textContent = mesh.material?.name || label;
+
+      if (mesh.material) {
+        const mat = mesh.material;
+        if (mat.color) {
+          const hex = '#' + mat.color.getHexString();
+          document.getElementById('input-mat-color').value = hex;
+          document.getElementById('mat-color-hex').textContent = hex;
+        }
+        if (typeof mat.metalness === 'number') {
+          document.getElementById('slider-mat-metalness').value = Math.round(mat.metalness * 100);
+          document.getElementById('val-mat-metalness').textContent = mat.metalness.toFixed(2);
+        }
+        if (typeof mat.roughness === 'number') {
+          document.getElementById('slider-mat-roughness').value = Math.round(mat.roughness * 100);
+          document.getElementById('val-mat-roughness').textContent = mat.roughness.toFixed(2);
+        }
+      }
+    }
+
+    function applyExplodedView(factor) {
+      if (!currentModelGroup) return;
+      currentModelGroup.traverse((node) => {
+        if (node.userData && node.userData.basePos && node.userData.explodeVec) {
+          node.position.copy(node.userData.basePos).addScaledVector(node.userData.explodeVec, factor);
+        }
+      });
+    }
+
+    function applyWireframeState(rootObj, enabled) {
+      if (!rootObj) return;
+      rootObj.traverse((node) => {
+        if (node.isMesh && node.material) {
+          node.material.wireframe = enabled;
+        }
+      });
+    }
+
+    // ============================================================================
+    // 8. DIRECT BINARY .GLB & EDITABLE .GLTF EXPORTER
+    // ============================================================================
+    function showToast(message, duration = 2600) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toast-msg').textContent = message;
+      toast.classList.remove('hidden');
+      clearTimeout(toast.hideTimer);
+      toast.hideTimer = setTimeout(() => {
+        toast.classList.add('hidden');
+      }, duration);
+    }
+
+    function exportObjectToGLB(object3D, filename, binary = true) {
+      return new Promise((resolve) => {
+        const exporter = new THREE.GLTFExporter();
+        // Temporarily ensure wireframe is off during export so exported PBR material is solid
+        const prevWire = wireframeEnabled;
+        if (prevWire) applyWireframeState(object3D, false);
+
+        exporter.parse(
+          object3D,
+          (result) => {
+            if (prevWire) applyWireframeState(object3D, true);
+
+            let blob;
+            if (binary && result instanceof ArrayBuffer) {
+              blob = new Blob([result], { type: 'model/gltf-binary' });
+            } else {
+              const jsonText = JSON.stringify(result, null, 2);
+              blob = new Blob([jsonText], { type: 'application/json' });
+            }
+
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              resolve();
+            }, 250);
+          },
+          { binary: binary }
+        );
+      });
+    }
+
+    async function batchExportAll9GLBs() {
+      showToast('Batch exporting all 9 .glb models (1/9)...', 12000);
+      for (let i = 0; i < HARDWARE_REGISTRY.length; i++) {
+        const item = HARDWARE_REGISTRY[i];
+        showToast(`Exporting (${i + 1}/9): ${item.filename}...`, 4000);
+        const tempModel = item.builder();
+        await exportObjectToGLB(tempModel, item.filename, true);
+        await new Promise((r) => setTimeout(r, 350));
+      }
+      showToast('All 9 binary .glb models downloaded!', 3500);
+    }
+
+    // ============================================================================
+    // 9. UI SIDEBAR, EVENT LISTENERS & SOURCE CODE GENERATOR
+    // ============================================================================
+    function renderAssetSidebar() {
+      const listEl = document.getElementById('asset-list');
+      listEl.innerHTML = '';
+
+      HARDWARE_REGISTRY.forEach((item, idx) => {
+        const isActive = !isGridView && idx === activeAssetIndex;
+        const btn = document.createElement('button');
+        btn.className = `w-56 lg:w-full text-left px-3 py-2.5 rounded-xl border transition shrink-0 flex items-center justify-between ${
+          isActive
+            ? 'bg-sky-500/15 border-sky-500/50 text-white shadow-md shadow-sky-950/50'
+            : 'bg-slate-900/60 hover:bg-slate-800/80 border-slate-800/80 text-slate-300'
+        }`;
+        btn.innerHTML = `
+          <div class="truncate pr-2">
+            <div class="text-xs font-semibold truncate">${item.title}</div>
+            <div class="text-[11px] text-slate-400 truncate mt-0.5">${item.subtitle}</div>
+            <div class="text-[10px] mono text-sky-400 mt-1">${item.filename}</div>
+          </div>
+          <span class="px-2 py-1 rounded bg-slate-800 hover:bg-sky-600 text-[10px] mono font-semibold text-slate-200 hover:text-white shrink-0" data-quick-dl="${idx}" title="Direct Download ${item.filename}">
+            .GLB
+          </span>
+        `;
+
+        btn.addEventListener('click', (e) => {
+          if (e.target.hasAttribute('data-quick-dl')) {
+            e.stopPropagation();
+            const dlIdx = parseInt(e.target.getAttribute('data-quick-dl'), 10);
+            const targetAsset = HARDWARE_REGISTRY[dlIdx];
+            showToast(`Exporting binary ${targetAsset.filename}...`);
+            const m = targetAsset.builder();
+            exportObjectToGLB(m, targetAsset.filename, true);
+            return;
+          }
+          loadSingleAsset(idx);
+        });
+
+        listEl.appendChild(btn);
+      });
+    }
+
+    function bindUIEvents() {
+      // Export Current GLB
+      document.getElementById('btn-export-current-glb').addEventListener('click', () => {
+        if (!currentModelGroup) return;
+        const fname = isGridView ? 'All_9_Hardware_Kit.glb' : HARDWARE_REGISTRY[activeAssetIndex].filename;
+        showToast(`Exporting binary ${fname}...`);
+        exportObjectToGLB(currentModelGroup, fname, true);
+      });
+
+      // Export Current Editable GLTF (JSON)
+      document.getElementById('btn-export-gltf-json').addEventListener('click', () => {
+        if (!currentModelGroup) return;
+        const base = isGridView ? 'All_9_Hardware_Kit' : HARDWARE_REGISTRY[activeAssetIndex].id;
+        showToast(`Exporting editable JSON ${base}.gltf...`);
+        exportObjectToGLB(currentModelGroup, `${base}.gltf`, false);
+      });
+
+      // Batch Export All 9 GLBs
+      document.getElementById('btn-export-all-glb').addEventListener('click', batchExportAll9GLBs);
+
+      // 9-Up Grid View
+      document.getElementById('btn-view-all-grid').addEventListener('click', loadAllAssetsGrid);
+
+      // Show All Sub-Meshes
+      document.getElementById('btn-show-all-nodes').addEventListener('click', () => {
+        if (!currentModelGroup) return;
+        currentModelGroup.children.forEach((c) => (c.visible = true));
+        const item = HARDWARE_REGISTRY[activeAssetIndex];
+        updateHUDAndHierarchy(
+          isGridView ? 'All_9_Hardware_Kit.glb' : item.filename,
+          isGridView ? 'Complete 9-Piece Hardware Kit' : item.subtitle
+        );
+      });
+
+      // Wireframe Toggle
+      document.getElementById('btn-toggle-wireframe').addEventListener('click', () => {
+        wireframeEnabled = !wireframeEnabled;
+        document.getElementById('wireframe-badge').className = `w-2 h-2 rounded-full ${
+          wireframeEnabled ? 'bg-sky-400 shadow-sm shadow-sky-400' : 'bg-slate-600'
+        }`;
+        applyWireframeState(currentModelGroup, wireframeEnabled);
+      });
+
+      // Classroom Callout Labels Toggle
+      document.getElementById('btn-toggle-callouts').addEventListener('click', () => {
+        calloutsEnabled = !calloutsEnabled;
+        document.getElementById('callouts-badge').className = `w-2 h-2 rounded-full ${
+          calloutsEnabled ? 'bg-indigo-400 shadow-sm shadow-indigo-400' : 'bg-slate-600'
+        }`;
+        document.getElementById('hud-lesson-card').classList.toggle('hidden', !calloutsEnabled);
+      });
+
+      // White Photo Studio vs Dark CAD Studio Backdrop Toggle
+      document.getElementById('btn-toggle-backdrop').addEventListener('click', () => {
+        lightBackdropEnabled = !lightBackdropEnabled;
+        const vp = document.getElementById('viewport-container');
+        vp.classList.toggle('light-studio', lightBackdropEnabled);
+        document.getElementById('backdrop-label').textContent = lightBackdropEnabled
+          ? 'Dark CAD Studio'
+          : 'White Photo Studio';
+        if (gridHelper) gridHelper.visible = !lightBackdropEnabled;
+      });
+
+      // Animate Toggle
+      document.getElementById('btn-toggle-animate').addEventListener('click', () => {
+        animateEnabled = !animateEnabled;
+        document.getElementById('animate-badge').className = `w-2 h-2 rounded-full ${
+          animateEnabled ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-slate-600'
+        }`;
+      });
+
+      // Turntable Toggle
+      document.getElementById('btn-toggle-turntable').addEventListener('click', () => {
+        turntableEnabled = !turntableEnabled;
+        document.getElementById('turntable-badge').className = `w-2 h-2 rounded-full ${
+          turntableEnabled ? 'bg-sky-400 shadow-sm shadow-sky-400' : 'bg-slate-600'
+        }`;
+      });
+
+      // Reset Camera
+      document.getElementById('btn-reset-camera').addEventListener('click', () => {
+        if (isGridView) {
+          camera.position.set(0, 4.6, 5.8);
+        } else {
+          camera.position.set(...HARDWARE_REGISTRY[activeAssetIndex].camPos);
+        }
+        controls.target.set(0, 0, 0);
+        controls.update();
+      });
+
+      // Exploded View Slider
+      document.getElementById('slider-explode').addEventListener('input', (e) => {
+        explodeFactor = parseInt(e.target.value, 10) / 100;
+        document.getElementById('explode-val').textContent = `${e.target.value}%`;
+        applyExplodedView(explodeFactor);
+      });
+
+      // Studio Exposure Slider
+      document.getElementById('slider-exposure').addEventListener('input', (e) => {
+        const exp = parseInt(e.target.value, 10) / 100;
+        renderer.toneMappingExposure = exp;
+        document.getElementById('exposure-val').textContent = exp.toFixed(2);
+      });
+
+      // Live PBR Material Editor Controls
+      document.getElementById('input-mat-color').addEventListener('input', (e) => {
+        if (selectedMesh && selectedMesh.material && selectedMesh.material.color) {
+          selectedMesh.material.color.set(e.target.value);
+          document.getElementById('mat-color-hex').textContent = e.target.value;
+        }
+      });
+
+      document.getElementById('slider-mat-metalness').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10) / 100;
+        document.getElementById('val-mat-metalness').textContent = val.toFixed(2);
+        if (selectedMesh && selectedMesh.material) {
+          selectedMesh.material.metalness = val;
+        }
+      });
+
+      document.getElementById('slider-mat-roughness').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10) / 100;
+        document.getElementById('val-mat-roughness').textContent = val.toFixed(2);
+        if (selectedMesh && selectedMesh.material) {
+          selectedMesh.material.roughness = val;
+        }
+      });
+
+      document.getElementById('slider-mat-bump').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10) / 100;
+        document.getElementById('val-mat-bump').textContent = val.toFixed(2);
+        if (selectedMesh && selectedMesh.material) {
+          selectedMesh.material.bumpScale = val * 0.0015;
+        }
+      });
+
+      // Source Code Modal
+      document.getElementById('btn-source-modal').addEventListener('click', () => {
+        const currentAsset = HARDWARE_REGISTRY[activeAssetIndex];
+        const codeEl = document.getElementById('source-code-content');
+        codeEl.textContent =
+          `// ==========================================================================\n` +
+          `// 1. LOADING THE EXPORTED "${currentAsset.filename}" IN ANY THREE.JS VIEWER\n` +
+          `// ==========================================================================\n` +
+          `import * as THREE from 'three';\n` +
+          `import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';\n\n` +
+          `const loader = new GLTFLoader();\n` +
+          `loader.load('./${currentAsset.filename}', (gltf) => {\n` +
+          `  const model = gltf.scene;\n` +
+          `  scene.add(model);\n\n` +
+          `  // Access any separated sub-mesh by name:\n` +
+          `  model.traverse((node) => {\n` +
+          `    if (node.isMesh) console.log('Sub-Mesh:', node.name, node.material);\n` +
+          `  });\n` +
+          `});\n\n` +
+          `// ==========================================================================\n` +
+          `// 2. EDITABLE PROCEDURAL GENERATOR FUNCTION FOR: ${currentAsset.title}\n` +
+          `// ==========================================================================\n` +
+          currentAsset.builder.toString();
+        document.getElementById('source-modal').classList.remove('hidden');
+      });
+
+      document.getElementById('btn-close-modal').addEventListener('click', () => {
+        document.getElementById('source-modal').classList.add('hidden');
+      });
+
+      document.getElementById('btn-copy-source').addEventListener('click', () => {
+        const text = document.getElementById('source-code-content').textContent;
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast('Editable Three.js source copied to clipboard!');
+      });
+    }
+
+    // ============================================================================
+    // 10. ANIMATION LOOP & WINDOW.ONLOAD STARTUP
+    // ============================================================================
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const delta = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
+
+      if (currentModelGroup) {
+        if (turntableEnabled) {
+          currentModelGroup.rotation.y += delta * 0.45;
+        }
+
+        if (animateEnabled) {
+          currentModelGroup.traverse((node) => {
+            if (node.userData.spinZ) {
+              node.rotation.z -= delta * 7.5;
+            }
+            if (node.userData.slideZ && explodeFactor === 0) {
+              node.position.z = (Math.sin(elapsed * 1.8) * 0.5 + 0.5) * 0.52;
+            }
+          });
+        }
+      }
+
+      if (controls) controls.update();
+      updateCalloutPinPositions();
+      if (renderer && scene && camera) renderer.render(scene, camera);
+    }
+
+    window.onload = function () {
+      initThreeViewport();
+      bindUIEvents();
+      loadSingleAsset(0);
+      animate();
+    };
+  </script>
+</body>
+</html>
