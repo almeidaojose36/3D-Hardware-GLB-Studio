@@ -636,8 +636,8 @@
         const wear = this.fbm(S, 3, 3, rnd);
         for (let i = 0; i < rough.length; i++) rough[i] = 0.9 + 0.1 * wear[i];
         this.cache.powder = {
-          normalMap: this.toTexture(this.normalCanvas(height, S, S, 0.45), { repeat: [2, 2] }),
-          ormMap: this.toTexture(this.ormCanvas(S, S, rough), { repeat: [2, 2] })
+          normalMap: this.toTexture(this.normalCanvas(height, S, S, 0.45), { repeat: [5, 5] }),
+          ormMap: this.toTexture(this.ormCanvas(S, S, rough), { repeat: [5, 5] })
         };
         return this.cache.powder;
       },
@@ -1115,6 +1115,22 @@
         });
       },
 
+      // Moulded power symbol on the case power button
+      getPowerIcon() {
+        return this.artwork('powerIcon', 128, 128, (ctx, w, h) => {
+          ctx.strokeStyle = 'rgba(205,210,216,0.9)';
+          ctx.lineWidth = 10;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.arc(w / 2, h / 2 + 6, 36, -Math.PI * 0.32, Math.PI * 1.32);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(w / 2, 18);
+          ctx.lineTo(w / 2, h / 2 + 4);
+          ctx.stroke();
+        });
+      },
+
       // Engraved top of a CR2032 lithium coin cell
       getCoinCellTop() {
         return this.artwork('coinCell', 256, 256, (ctx, w, h) => {
@@ -1190,7 +1206,8 @@
         return out;
       },
 
-      // Normalize ExtrudeGeometry UVs to [0..1] so procedural textures map cleanly
+      // Normalize ExtrudeGeometry UVs to [0..1] so procedural textures map cleanly. Each face's projection
+      // follows the sign of its normal so artwork (PCB silkscreen text) is never mirrored on any side.
       normalizeUVs(geometry) {
         geometry.computeBoundingBox();
         const max = geometry.boundingBox.max;
@@ -1199,21 +1216,25 @@
         const pos = geometry.attributes.position;
         const norm = geometry.attributes.normal;
         const uvs = [];
+        const u = (v, lo, span, flip) => (flip ? 1 - (v - lo) / (span || 1) : (v - lo) / (span || 1));
 
         for (let i = 0; i < pos.count; i++) {
-          const nx = Math.abs(norm.getX(i));
-          const ny = Math.abs(norm.getY(i));
-          const nz = Math.abs(norm.getZ(i));
+          const nx = norm.getX(i);
+          const ny = norm.getY(i);
+          const nz = norm.getZ(i);
+          const ax = Math.abs(nx);
+          const ay = Math.abs(ny);
+          const az = Math.abs(nz);
           const x = pos.getX(i);
           const y = pos.getY(i);
           const z = pos.getZ(i);
 
-          if (ny >= nx && ny >= nz) {
-            uvs.push((x - min.x) / (range.x || 1), (z - min.z) / (range.z || 1));
-          } else if (nx >= ny && nx >= nz) {
-            uvs.push((z - min.z) / (range.z || 1), (y - min.y) / (range.y || 1));
+          if (ay >= ax && ay >= az) {
+            uvs.push(u(x, min.x, range.x, false), u(z, min.z, range.z, ny > 0));
+          } else if (ax >= ay && ax >= az) {
+            uvs.push(u(z, min.z, range.z, nx > 0), u(y, min.y, range.y, false));
           } else {
-            uvs.push((x - min.x) / (range.x || 1), (y - min.y) / (range.y || 1));
+            uvs.push(u(x, min.x, range.x, nz < 0), u(y, min.y, range.y, false));
           }
         }
         geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
@@ -1286,22 +1307,49 @@
         return geo;
       },
 
-      // Create a 2D Rounded Rectangle Shape centered at (0,0)
-      roundedRectShape(w, h, r) {
+      // Create a 2D Rounded Rectangle Shape centered at (cx, cy); also usable as a hole path
+      roundedRectShape(w, h, r, cx = 0, cy = 0) {
         const shape = new THREE.Shape();
         const hw = w / 2;
         const hh = h / 2;
         const cr = Math.min(r, hw * 0.9, hh * 0.9);
-        shape.moveTo(-hw + cr, -hh);
-        shape.lineTo(hw - cr, -hh);
-        shape.quadraticCurveTo(hw, -hh, hw, -hh + cr);
-        shape.lineTo(hw, hh - cr);
-        shape.quadraticCurveTo(hw, hh, hw - cr, hh);
-        shape.lineTo(-hw + cr, hh);
-        shape.quadraticCurveTo(-hw, hh, -hw, hh - cr);
-        shape.lineTo(-hw, -hh + cr);
-        shape.quadraticCurveTo(-hw, -hh, -hw + cr, -hh);
+        shape.moveTo(cx - hw + cr, cy - hh);
+        shape.lineTo(cx + hw - cr, cy - hh);
+        shape.quadraticCurveTo(cx + hw, cy - hh, cx + hw, cy - hh + cr);
+        shape.lineTo(cx + hw, cy + hh - cr);
+        shape.quadraticCurveTo(cx + hw, cy + hh, cx + hw - cr, cy + hh);
+        shape.lineTo(cx - hw + cr, cy + hh);
+        shape.quadraticCurveTo(cx - hw, cy + hh, cx - hw, cy + hh - cr);
+        shape.lineTo(cx - hw, cy - hh + cr);
+        shape.quadraticCurveTo(cx - hw, cy - hh, cx - hw + cr, cy - hh);
         return shape;
+      },
+
+      // Closed polygon with every corner rounded by r (D-sub shells, keyed cavities, L-shaped slots)
+      roundedPolygon(points, r) {
+        const shape = new THREE.Shape();
+        const n = points.length;
+        for (let i = 0; i < n; i++) {
+          const [px, py] = points[i];
+          const [ax, ay] = points[(i - 1 + n) % n];
+          const [bx, by] = points[(i + 1) % n];
+          const la = Math.hypot(ax - px, ay - py);
+          const lb = Math.hypot(bx - px, by - py);
+          const ra = Math.min(r, la / 2);
+          const rb = Math.min(r, lb / 2);
+          const sx = px + ((ax - px) / la) * ra;
+          const sy = py + ((ay - py) / la) * ra;
+          if (i === 0) shape.moveTo(sx, sy);
+          else shape.lineTo(sx, sy);
+          shape.quadraticCurveTo(px, py, px + ((bx - px) / lb) * rb, py + ((by - py) / lb) * rb);
+        }
+        shape.closePath();
+        return shape;
+      },
+
+      // Flat facets for prismatic parts (hex standoffs, knurled heads) that should not shade round
+      faceted(geometry, creaseAngleDeg = 30) {
+        return this.weld(this.creaseNormals(geometry, creaseAngleDeg));
       },
 
       // Extrude a 2D Shape with Realistic Machined Chamfer/Bevel Edges
@@ -1577,6 +1625,427 @@
     };
 
     // ============================================================================
+    // 2B. CONNECTOR, HEADER & CASE-HARDWARE PART LIBRARY
+    // ============================================================================
+    // Rear-panel connectors face local -X (out through a board edge or rear wall), stand on y = 0 and
+    // reach back into +X. Their faces are drawn as (z, y) profiles with real openings, so you look into
+    // a metal tube with the insert, tongue or contacts set back inside it, as on the real parts.
+    const Parts = {
+      circlePath(cx, cy, r) {
+        const p = new THREE.Path();
+        p.absarc(cx, cy, r, 0, Math.PI * 2, true);
+        return p;
+      },
+
+      // Extrude a (z, y) profile along X: front face at x = 0, back face at x = depth
+      profileX(key, buildShape, depth, bevel = 0.0015) {
+        return CAD.shared('profileX:' + key, () => {
+          const g = CAD.extrudeBeveled(buildShape(), depth - bevel * 2, bevel, 2, 8);
+          g.rotateY(-Math.PI / 2);
+          g.translate(depth / 2, 0, 0);
+          return g;
+        });
+      },
+
+      // Extrude an (x, z) footprint upward: bottom at y = 0, top face (with any cavities) at y = height
+      profileY(key, buildShape, height, bevel = 0.0015) {
+        return CAD.shared('profileY:' + key, () => {
+          const g = CAD.extrudeBeveled(buildShape(), height - bevel * 2, bevel, 2, 8);
+          g.rotateX(Math.PI / 2);
+          g.translate(0, height / 2, 0);
+          return g;
+        });
+      },
+
+      // Tongue with four gold contacts and a dark rear wall inside a USB-A opening centred at height cy
+      usbAInternals(group, cy, tongueMat, m) {
+        const tongue = new THREE.Mesh(CAD.shared('usbTongue', () => CAD.softBox(0.07, 0.009, 0.064)), tongueMat);
+        tongue.position.set(0.047, cy + 0.0065, 0);
+        group.add(tongue);
+        const contactGeo = CAD.shared('usbContact', () => CAD.softBox(0.05, 0.0012, 0.0065));
+        [-0.024, -0.008, 0.008, 0.024].forEach((z) => {
+          const contact = new THREE.Mesh(contactGeo, m.goldContacts);
+          contact.position.set(0.052, cy + 0.0016, z);
+          group.add(contact);
+        });
+        const back = new THREE.Mesh(CAD.shared('usbBack', () => CAD.softBox(0.004, 0.034, 0.082)), m.icEpoxyBlack);
+        back.position.set(0.088, cy, 0);
+        group.add(back);
+      },
+
+      // Eight angled spring contacts, a dark rear wall and link/activity LEDs for an RJ45 opening at cy
+      rj45Internals(group, cy, m) {
+        const contactGeo = CAD.shared('rj45Contact', () => CAD.softBox(0.05, 0.0016, 0.0036));
+        for (let k = 0; k < 8; k++) {
+          const contact = new THREE.Mesh(contactGeo, m.goldContacts);
+          contact.position.set(0.045, cy + 0.01, (k - 3.5) * 0.0066);
+          contact.rotation.z = -0.42;
+          group.add(contact);
+        }
+        const back = new THREE.Mesh(CAD.shared('rj45Back', () => CAD.softBox(0.004, 0.072, 0.078)), m.icEpoxyBlack);
+        back.position.set(0.1, cy - 0.005, 0);
+        group.add(back);
+        const ledGeo = CAD.shared('rj45Led', () => CAD.softBox(0.004, 0.009, 0.014));
+        [[-0.034, m.ledGreen], [0.034, m.ledAmber]].forEach(([z, ledMat]) => {
+          const led = new THREE.Mesh(ledGeo, ledMat);
+          led.position.set(-0.0012, cy + 0.0335, z);
+          group.add(led);
+        });
+      },
+
+      // Shielded stack of USB-A ports, optionally topped by an RJ45 LAN jack
+      usbStack(count, withRJ45, tongueMat, m) {
+        const g = new THREE.Group();
+        const W = 0.104;
+        const D = 0.15;
+        const usbY = (i) => 0.032 + i * 0.052;
+        const rjY = usbY(count - 1) + 0.062;
+        const H = withRJ45 ? rjY + 0.046 : usbY(count - 1) + 0.032;
+        const rjOpening = [[-0.037, 0.024], [0.037, 0.024], [0.037, -0.024], [0.016, -0.024], [0.016, -0.035], [-0.016, -0.035], [-0.016, -0.024], [-0.037, -0.024]];
+        const shell = this.profileX(`usbStack${count}${withRJ45}`, () => {
+          const s = CAD.roundedRectShape(W, H, 0.006, 0, H / 2);
+          for (let i = 0; i < count; i++) s.holes.push(CAD.roundedRectShape(0.078, 0.03, 0.003, 0, usbY(i)));
+          if (withRJ45) s.holes.push(CAD.roundedPolygon(rjOpening.map(([z, y]) => [z, y + rjY]), 0.002));
+          return s;
+        }, D);
+        g.add(new THREE.Mesh(shell, m.tinShield));
+        for (let i = 0; i < count; i++) this.usbAInternals(g, usbY(i), tongueMat, m);
+        if (withRJ45) this.rj45Internals(g, rjY, m);
+        return g;
+      },
+
+      // Coloured Mini-DIN insert recessed in a PS/2 opening: six pin holes, top key notch, centre key
+      miniDinInsert(cy, R, insertMat, m) {
+        const g = new THREE.Group();
+        const disc = new THREE.Mesh(CAD.shared('dinDisc' + R, () => new THREE.CylinderGeometry(R - 0.002, R - 0.002, 0.008, 40).rotateZ(Math.PI / 2)), insertMat);
+        disc.position.set(0.026, cy, 0);
+        g.add(disc);
+        const holeGeo = CAD.shared('dinPinHole', () => new THREE.CylinderGeometry(0.0034, 0.0034, 0.002, 12).rotateZ(Math.PI / 2));
+        [[-0.43, 0.32], [0.43, 0.32], [-0.62, -0.12], [0.62, -0.12], [-0.25, -0.5], [0.25, -0.5]].forEach(([u, v]) => {
+          const hole = new THREE.Mesh(holeGeo, m.icEpoxyBlack);
+          hole.position.set(0.0215, cy + v * R, u * R);
+          g.add(hole);
+        });
+        const key = new THREE.Mesh(CAD.shared('dinKey', () => CAD.softBox(0.01, 0.011, 0.011)), insertMat);
+        key.position.set(0.018, cy, 0);
+        const notch = new THREE.Mesh(CAD.shared('dinNotch', () => CAD.softBox(0.002, 0.009, 0.012)), m.icEpoxyBlack);
+        notch.position.set(0.0215, cy + 0.72 * R, 0);
+        g.add(key, notch);
+        return g;
+      },
+
+      // Stacked PS/2 ports in a tin shield: mouse (green) over keyboard (purple)
+      ps2Stack(m) {
+        const g = new THREE.Group();
+        const W = 0.104;
+        const H = 0.236;
+        const R = 0.031;
+        const ports = [[0.064, m.portPurplePS2], [0.172, m.portGreenPS2]];
+        const shell = this.profileX('ps2Shell', () => {
+          const s = CAD.roundedRectShape(W, H, 0.008, 0, H / 2);
+          ports.forEach(([y]) => s.holes.push(this.circlePath(0, y, R)));
+          return s;
+        }, 0.15);
+        g.add(new THREE.Mesh(shell, m.tinShield));
+        ports.forEach(([y, insertMat]) => g.add(this.miniDinInsert(y, R, insertMat, m)));
+        return g;
+      },
+
+      // Three colour-coded 3.5 mm jacks (line-in, line-out, mic) in a moulded block
+      audioStack(m) {
+        const g = new THREE.Group();
+        const W = 0.09;
+        const H = 0.24;
+        const hole = 0.0125;
+        const jacks = [[0.045, m.audioPink], [0.12, m.audioLime], [0.195, m.audioBlue]];
+        g.add(new THREE.Mesh(this.profileX('audioBody', () => {
+          const s = CAD.roundedRectShape(W, H, 0.006, 0, H / 2);
+          jacks.forEach(([y]) => s.holes.push(this.circlePath(0, y, hole)));
+          return s;
+        }, 0.13), m.matteBlackPlastic));
+        const ringGeo = this.profileX('audioRing', () => {
+          const s = new THREE.Shape();
+          s.absarc(0, 0, 0.028, 0, Math.PI * 2, false);
+          s.holes.push(this.circlePath(0, 0, hole));
+          return s;
+        }, 0.008);
+        const sleeveGeo = CAD.shared('audioSleeve', () => new THREE.CylinderGeometry(0.0107, 0.0107, 0.035, 24, 1, true).rotateZ(Math.PI / 2));
+        const backGeo = CAD.shared('audioBack', () => new THREE.CylinderGeometry(0.0108, 0.0108, 0.002, 24).rotateZ(Math.PI / 2));
+        jacks.forEach(([y, ringMat]) => {
+          const ring = new THREE.Mesh(ringGeo, ringMat);
+          ring.position.set(-0.008, y, 0);
+          const sleeve = new THREE.Mesh(sleeveGeo, m.tinShield);
+          sleeve.position.set(0.022, y, 0);
+          const back = new THREE.Mesh(backGeo, m.icEpoxyBlack);
+          back.position.set(0.04, y, 0);
+          g.add(ring, sleeve, back);
+        });
+        return g;
+      },
+
+      // D-subminiature port: tin flange, protruding D shell, colour insert (female sockets or male
+      // pins) and hex jackscrews. Origin at the connector's centre; the caller supplies the body.
+      dSub(o, insertMat, m) {
+        const g = new THREE.Group();
+        const key = `dsub${o.pins}`;
+        const trap = (inset) => [
+          [-o.top / 2 + inset, o.dh / 2 - inset],
+          [o.top / 2 - inset, o.dh / 2 - inset],
+          [o.bot / 2 - inset, -o.dh / 2 + inset],
+          [-o.bot / 2 + inset, -o.dh / 2 + inset]
+        ];
+        const nTop = Math.ceil(o.pins / 2);
+        const nBot = Math.floor(o.pins / 2);
+        const pins = [];
+        for (let i = 0; i < nTop; i++) pins.push([(i - (nTop - 1) / 2) * o.pitch, o.dh * 0.2]);
+        for (let i = 0; i < nBot; i++) pins.push([(i - (nBot - 1) / 2) * o.pitch, -o.dh * 0.2]);
+
+        g.add(new THREE.Mesh(this.profileX(key + 'flange', () => {
+          const s = CAD.roundedRectShape(o.fw, o.fh, 0.006);
+          s.holes.push(CAD.roundedPolygon(trap(-0.001), 0.006));
+          [-1, 1].forEach((side) => s.holes.push(this.circlePath(side * (o.fw / 2 - 0.022), 0, 0.0065)));
+          return s;
+        }, 0.006), m.tinShield));
+
+        const shell = new THREE.Mesh(this.profileX(key + 'shell', () => {
+          const s = CAD.roundedPolygon(trap(0), 0.007);
+          s.holes.push(CAD.roundedPolygon(trap(0.0035), 0.005));
+          return s;
+        }, 0.026), m.tinShield);
+        shell.position.x = -0.026;
+        g.add(shell);
+
+        if (o.female) {
+          const insert = new THREE.Mesh(this.profileX(key + 'insert', () => {
+            const s = CAD.roundedPolygon(trap(0.0045), 0.004);
+            pins.forEach(([z, y]) => s.holes.push(this.circlePath(z, y, o.pitch * 0.26)));
+            return s;
+          }, 0.02), insertMat);
+          insert.position.x = -0.024;
+          g.add(insert);
+        } else {
+          const insert = new THREE.Mesh(this.profileX(key + 'insert', () => CAD.roundedPolygon(trap(0.0045), 0.004), 0.012), insertMat);
+          insert.position.x = -0.006;
+          g.add(insert);
+          const pinGeo = CAD.shared('dsubPin', () => CAD.roundedCylinderGeometry(0.0042, 0.0042, 0.018, 0.0015, 16).rotateZ(Math.PI / 2));
+          pins.forEach(([z, y]) => {
+            const pin = new THREE.Mesh(pinGeo, m.goldContacts);
+            pin.position.set(-0.014, y, z);
+            g.add(pin);
+          });
+        }
+
+        const hexGeo = CAD.shared('dsubJackscrew', () => CAD.faceted(new THREE.CylinderGeometry(0.0095, 0.0095, 0.026, 6).rotateZ(Math.PI / 2), 40));
+        const boreGeo = CAD.shared('dsubJackBore', () => new THREE.CylinderGeometry(0.0042, 0.0042, 0.002, 16).rotateZ(Math.PI / 2));
+        [-1, 1].forEach((side) => {
+          const z = side * (o.fw / 2 - 0.022);
+          const hex = new THREE.Mesh(hexGeo, m.tinShield);
+          hex.position.set(-0.013, 0, z);
+          const bore = new THREE.Mesh(boreGeo, m.icEpoxyBlack);
+          bore.position.set(-0.0275, 0, z);
+          g.add(hex, bore);
+        });
+        return g;
+      },
+
+      // Mini-Fit style power header: nylon housing with alternating square / keyed cavities, a tin pin
+      // in each cavity and the latch ramp the cable clip snaps over
+      powerHeader(cols, rows, pitchX, pitchZ, W, L, H, m) {
+        const g = new THREE.Group();
+        const key = `powerHeader${cols}x${rows}`;
+        const h = 0.013;
+        const centers = [];
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) centers.push([(r - (rows - 1) / 2) * pitchX, (c - (cols - 1) / 2) * pitchZ, (r + c) % 2 === 1]);
+        }
+        g.add(new THREE.Mesh(this.profileY(key, () => {
+          const s = CAD.roundedRectShape(W, L, 0.006);
+          centers.forEach(([x, z, keyed]) => {
+            const pts = keyed
+              ? [[x - h, z - h], [x + h, z - h], [x + h, z + h * 0.3], [x + h * 0.3, z + h], [x - h * 0.3, z + h], [x - h, z + h * 0.3]]
+              : [[x - h, z - h], [x + h, z - h], [x + h, z + h], [x - h, z + h]];
+            s.holes.push(CAD.roundedPolygon(pts, 0.002));
+          });
+          return s;
+        }, H), m.slotWhite));
+
+        const floor = new THREE.Mesh(CAD.shared(key + 'floor', () => CAD.softBox(W - 0.01, 0.004, L - 0.01)), m.icEpoxyBlack);
+        floor.position.y = 0.012;
+        g.add(floor);
+        const pinGeo = CAD.shared('powerHeaderPin', () => CAD.softBox(0.0075, H - 0.03, 0.0075));
+        centers.forEach(([x, z]) => {
+          const pin = new THREE.Mesh(pinGeo, m.tinShield);
+          pin.position.set(x, 0.012 + (H - 0.03) / 2, z);
+          g.add(pin);
+        });
+        const latch = CAD.beveledBox(0.012, 0.032, Math.min(0.06, L * 0.4), 0.003, 0.002, m.slotWhite);
+        latch.position.set(W / 2 + 0.006, H - 0.03, 0);
+        g.add(latch);
+        return g;
+      },
+
+      // Vertical 7-pin SATA receptacle: L-keyed shroud around a contact tongue with gold blades
+      sataPort(mat, m) {
+        const g = new THREE.Group();
+        const H = 0.072;
+        const slot = [[-0.034, -0.014], [0.032, -0.014], [0.032, 0.016], [0.019, 0.016], [0.019, 0.005], [-0.034, 0.005]];
+        g.add(new THREE.Mesh(this.profileY('sataShroud', () => {
+          const s = CAD.roundedRectShape(0.09, 0.055, 0.005);
+          s.holes.push(CAD.roundedPolygon(slot, 0.0015));
+          return s;
+        }, H), mat));
+        const floor = new THREE.Mesh(CAD.shared('sataFloor', () => CAD.softBox(0.07, 0.004, 0.034)), m.icEpoxyBlack);
+        floor.position.y = 0.01;
+        const tongue = new THREE.Mesh(CAD.shared('sataTongue', () => CAD.softBox(0.058, H - 0.02, 0.005)), mat);
+        tongue.position.set(-0.002, 0.01 + (H - 0.02) / 2, -0.009);
+        g.add(floor, tongue);
+        const bladeGeo = CAD.shared('sataBlade', () => CAD.softBox(0.0045, H - 0.03, 0.0008));
+        for (let i = 0; i < 7; i++) {
+          const blade = new THREE.Mesh(bladeGeo, m.goldContacts);
+          blade.position.set(-0.027 + i * 0.0085, 0.01 + (H - 0.03) / 2 + 0.006, -0.0062);
+          g.add(blade);
+        }
+        return g;
+      },
+
+      // Rubber cable-management grommet: rim that wraps the tray edge plus a slit membrane of fingers.
+      // Lies in the (x, y) plane, centred on the tray sheet.
+      grommet(w, h, m) {
+        const g = new THREE.Group();
+        const key = `grommet${w},${h}`;
+        const corner = Math.min(w, h) * 0.3;
+        g.add(new THREE.Mesh(CAD.shared(key + 'rim', () => {
+          const s = CAD.roundedRectShape(w + 0.03, h + 0.03, corner + 0.015);
+          s.holes.push(CAD.roundedRectShape(w - 0.014, h - 0.014, corner));
+          return CAD.extrudeBeveled(s, 0.034, 0.004, 3, 16);
+        }), m.rubberBlack));
+
+        const vertical = h >= w;
+        const along = (vertical ? h : w) - 0.014;
+        const across = (vertical ? w : h) - 0.014;
+        const n = Math.max(2, Math.round(along / 0.032));
+        const fingerLen = along / n - 0.004;
+        const fingerSpan = across / 2 - 0.003;
+        const fingerGeo = CAD.shared(key + 'finger', () =>
+          vertical ? CAD.softBox(fingerSpan, fingerLen, 0.004) : CAD.softBox(fingerLen, fingerSpan, 0.004)
+        );
+        for (let i = 0; i < n; i++) {
+          const a = -along / 2 + (i + 0.5) * (along / n);
+          [-1, 1].forEach((side) => {
+            const finger = new THREE.Mesh(fingerGeo, m.rubberBlack);
+            const b = side * (fingerSpan / 2 + 0.003);
+            if (vertical) finger.position.set(b, a, 0.004);
+            else finger.position.set(a, b, 0.004);
+            g.add(finger);
+          });
+        }
+        return g;
+      },
+
+      // Brass M3 motherboard standoff: hex body with a dark threaded bore, axis along +Z
+      standoff(m) {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(CAD.shared('standoffHex', () => CAD.faceted(new THREE.CylinderGeometry(0.0125, 0.0125, 0.03, 6).rotateX(Math.PI / 2), 40)), m.brass));
+        const bore = new THREE.Mesh(CAD.shared('standoffBore', () => new THREE.CylinderGeometry(0.005, 0.005, 0.002, 16).rotateX(Math.PI / 2)), m.icEpoxyBlack);
+        bore.position.z = 0.0151;
+        g.add(bore);
+        return g;
+      },
+
+      // Knurled thumbscrew with flange washer, head facing -X
+      thumbscrew(m) {
+        const g = new THREE.Group();
+        const head = new THREE.Mesh(CAD.shared('thumbHead', () => CAD.faceted(new THREE.CylinderGeometry(0.016, 0.016, 0.014, 24).rotateZ(Math.PI / 2), 10)), m.chromeMetal);
+        head.position.x = -0.01;
+        const washer = new THREE.Mesh(CAD.shared('thumbWasher', () => CAD.roundedCylinderGeometry(0.02, 0.02, 0.003, 0.001, 32).rotateZ(Math.PI / 2)), m.chromeMetal);
+        washer.position.x = -0.0015;
+        g.add(head, washer);
+        return g;
+      },
+
+      // Tool-less 5.25" bay latch: moulded lever with grip ridges and a pivot rivet
+      bayLatch(m) {
+        const g = new THREE.Group();
+        g.add(CAD.beveledBox(0.11, 0.034, 0.014, 0.008, 0.003, m.toolGrey));
+        const ridgeGeo = CAD.shared('latchRidge', () => CAD.softBox(0.004, 0.026, 0.005));
+        for (let i = 0; i < 4; i++) {
+          const ridge = new THREE.Mesh(ridgeGeo, m.toolGrey);
+          ridge.position.set(-0.042 + i * 0.008, 0, 0.0095);
+          g.add(ridge);
+        }
+        const rivet = new THREE.Mesh(CAD.shared('latchRivet', () => CAD.roundedCylinderGeometry(0.008, 0.008, 0.006, 0.002, 20).rotateX(Math.PI / 2)), m.chromeMetal);
+        rivet.position.set(0.035, 0, 0.0095);
+        g.add(rivet);
+        return g;
+      },
+
+      // Tool-less 3.5" drive sled: twin side rails, rear brace and a front pull handle with finger notch
+      driveSled(m) {
+        const g = new THREE.Group();
+        [-1, 1].forEach((side) => {
+          const rail = CAD.beveledBox(0.4, 0.022, 0.014, 0.004, 0.002, m.toolGrey);
+          rail.position.z = side * 0.207;
+          g.add(rail);
+        });
+        const brace = CAD.beveledBox(0.016, 0.01, 0.43, 0.003, 0.0015, m.toolGrey);
+        brace.position.set(-0.19, -0.006, 0);
+        const handle = new THREE.Mesh(CAD.shared('sledHandle', () => {
+          const s = CAD.roundedRectShape(0.43, 0.05, 0.012);
+          s.holes.push(CAD.roundedRectShape(0.09, 0.018, 0.009, 0, 0.004));
+          const geo = CAD.extrudeBeveled(s, 0.012, 0.003, 2, 12);
+          geo.rotateY(Math.PI / 2);
+          return geo;
+        }), m.toolGrey);
+        handle.position.set(0.205, 0.012, 0);
+        g.add(brace, handle);
+        return g;
+      },
+
+      // Cable run along a centre path: each lead is a twisted pair (or single jacket) at its own offset
+      // in the bundle and stops at its own point along the run in a small header plug; optional ties
+      cableBundle(path, leads, opts = {}) {
+        const group = new THREE.Group();
+        const SEG = opts.segments || 240;
+        const turns = opts.twistTurns || 22;
+        const curve = new THREE.CatmullRomCurve3(path);
+        const frames = curve.computeFrenetFrames(SEG, false);
+        const centre = (i) => curve.getPointAt(i / SEG);
+        const along = (i, a, b) => centre(i).addScaledVector(frames.normals[i], a).addScaledVector(frames.binormals[i], b);
+
+        leads.forEach((lead) => {
+          const last = Math.round(lead.end * SEG);
+          const n = lead.conductors.length;
+          lead.conductors.forEach((conductorMat, c) => {
+            const pts = [];
+            for (let i = 0; i <= last; i++) {
+              const phi = (i / SEG) * turns * Math.PI * 2 + (c * Math.PI * 2) / n;
+              const twist = n > 1 ? lead.twist : 0;
+              pts.push(along(i, lead.offset[0] + Math.cos(phi) * twist, lead.offset[1] + Math.sin(phi) * twist));
+            }
+            group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), last, lead.radius, 5, false), conductorMat));
+          });
+          const dir = frames.tangents[last];
+          const plug = new THREE.Mesh(lead.plugGeo, lead.plugMat);
+          plug.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+          plug.position.copy(along(last, lead.offset[0], lead.offset[1])).addScaledVector(dir, lead.plugLength / 2);
+          group.add(plug);
+        });
+
+        (opts.ties || []).forEach((t) => {
+          const i = Math.round(t * SEG);
+          const tie = new THREE.Mesh(CAD.shared('zipTie' + opts.tieRadius, () => new THREE.TorusGeometry(opts.tieRadius, 0.0028, 8, 28)), opts.tieMat);
+          tie.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), frames.tangents[i]);
+          tie.position.copy(centre(i));
+          const head = new THREE.Mesh(CAD.shared('zipTieHead', () => CAD.softBox(0.012, 0.009, 0.01)), opts.tieMat);
+          head.quaternion.copy(tie.quaternion);
+          head.position.copy(centre(i)).addScaledVector(frames.normals[i], opts.tieRadius + 0.004);
+          group.add(tie, head);
+        });
+        return group;
+      }
+    };
+
+    // ============================================================================
     // 3. PHOTOREALISTIC PBR MATERIAL FACTORY
     // ============================================================================
     // Base colours follow measured reflectance: metals use their F0 (gold, copper, nickel, chrome,
@@ -1612,7 +2081,7 @@
           color: srgb(0x232428),
           roughness: 0.55,
           metalness: 0,
-          ...surface(powder, 0.35)
+          ...surface(powder, 0.22)
         }),
         brushedNickel: brushedMetal('Brushed_Nickel_Plate', 0xd8d4cc, 0.34),
         silverAluminum: brushedMetal('Brushed_Silver_Aluminum', 0xe4e6e9, 0.4),
@@ -1679,7 +2148,22 @@
         }),
         capTopAluminum: polishedMetal('Capacitor_Aluminum_Top', 0xdcdfe3, 0.3),
         ferriteCore: molded('Painted_Ferrite_Core', 0xd8cfa8, 0.55),
-        enamelCopperWire: polishedMetal('Enamelled_Copper_Wire', 0xd88c5a, 0.2)
+        enamelCopperWire: polishedMetal('Enamelled_Copper_Wire', 0xd88c5a, 0.2),
+        // Connector shields, audio colour codes and indicator LEDs
+        tinShield: brushedMetal('Tin_Plated_Steel_Shield', 0xd6d9dc, 0.46, 0.4),
+        audioBlue: molded('Audio_LineIn_Blue', 0x5aa9e6, 0.45),
+        audioLime: molded('Audio_LineOut_Lime', 0x8cc63f, 0.45),
+        audioPink: molded('Audio_Mic_Pink', 0xf28cb8, 0.45),
+        ledGreen: new THREE.MeshStandardMaterial({ name: 'LED_Lens_Green', color: srgb(0x48d867), emissive: srgb(0x2bd954), emissiveIntensity: 0.7, roughness: 0.25 }),
+        ledAmber: new THREE.MeshStandardMaterial({ name: 'LED_Lens_Amber', color: srgb(0xf5a623), emissive: srgb(0xff9a1a), emissiveIntensity: 0.6, roughness: 0.25 }),
+        ledBlue: new THREE.MeshStandardMaterial({ name: 'LED_Lens_Blue', color: srgb(0x4f8dff), emissive: srgb(0x3d7bff), emissiveIntensity: 0.8, roughness: 0.25 }),
+        // Case hardware and front-panel leads
+        brass: polishedMetal('Brass_Standoff', 0xebd394, 0.3),
+        rubberBlack: molded('Rubber_Grommet', 0x1c1d20, 0.82),
+        toolGrey: molded('Toolless_Grey_Plastic', 0x4a4d52, 0.55),
+        wireWhite: molded('PVC_Wire_White', 0xe6e6e1, 0.36),
+        wireGreen: molded('PVC_Wire_Green', 0x1f9d4c, 0.36),
+        wireBlue: molded('PVC_Wire_Blue', 0x2457c5, 0.36)
       };
     }
 
@@ -1890,82 +2374,137 @@
       const mat = createPBRMaterials();
       const root = new THREE.Group();
       root.name = 'PC_Case_MidTower';
+      // Sheet-steel gauge, slightly exaggerated so folded edges read at classroom viewing distance
+      const T = 0.006;
 
-      // 2A. Main Steel Chassis Frame, Embossed Motherboard Tray & Brass Standoffs
+      // 2A. Steel chassis: ATX motherboard tray with grommeted cable cutouts, brass standoffs, vented
+      // roof and floor, front steel frame and the folded flanges framing the open side
       const chassisGroup = new THREE.Group();
       chassisGroup.name = 'Chassis_Steel_Structure';
 
-      // Motherboard Tray with Cutouts for CPU Cooler Backplate & Cable Management
-      const trayShape = CAD.roundedRectShape(1.68, 1.82, 0.02);
-      // CPU Backplate Cutout
-      const cpuCut = new THREE.Path();
-      cpuCut.moveTo(-0.42, 0.15);
-      cpuCut.lineTo(0.02, 0.15);
-      cpuCut.lineTo(0.02, 0.62);
-      cpuCut.lineTo(-0.42, 0.62);
-      cpuCut.closePath();
-      trayShape.holes.push(cpuCut);
-
-      // Lower & Side Cable Routing Grommet Cutouts
-      [[-0.42, -0.42, 0.44, 0.42], [0.16, 0.22, 0.12, 0.35], [0.16, -0.32, 0.12, 0.35]].forEach(([x, y, w, h]) => {
-        const hPath = new THREE.Path();
-        hPath.moveTo(x, y);
-        hPath.lineTo(x + w, y);
-        hPath.lineTo(x + w, y + h);
-        hPath.lineTo(x, y + h);
-        hPath.closePath();
-        trayShape.holes.push(hPath);
-      });
-
-      const trayGeo = CAD.extrudeBeveled(trayShape, 0.025, 0.004, 2, 16);
-      const moboTray = new THREE.Mesh(trayGeo, mat.chassisBlackSteel);
-      moboTray.position.set(-0.02, 0.05, -0.38);
+      // Tray in world (x, y): the ATX board sits ~z -0.33 with its rear edge at the I/O cutout
+      const grommetSlots = [
+        [0.27, 0.65, 0.09, 0.3],
+        [0.27, 0.23, 0.09, 0.3],
+        [0.27, -0.2, 0.09, 0.26],
+        [-0.35, -0.515, 0.4, 0.09]
+      ];
+      const trayShape = CAD.roundedRectShape(1.68, 1.82, 0.02, -0.02, 0.05);
+      trayShape.holes.push(CAD.roundedRectShape(0.38, 0.4, 0.03, -0.41, 0.56)); // CPU backplate access
+      trayShape.holes.push(CAD.roundedRectShape(0.2, 0.045, 0.018, -0.68, 0.912)); // 8-pin EPS pass-through
+      grommetSlots.forEach(([x, y, w, h]) => trayShape.holes.push(CAD.roundedRectShape(w, h, Math.min(w, h) * 0.45, x, y)));
+      const moboTray = new THREE.Mesh(CAD.extrudeBeveled(trayShape, 0.025, 0.004, 2, 16), mat.chassisBlackSteel);
+      moboTray.position.z = -0.38;
       chassisGroup.add(moboTray);
+
+      grommetSlots.forEach(([x, y, w, h]) => {
+        const grommet = Parts.grommet(w, h, mat);
+        grommet.position.set(x, y, -0.38);
+        chassisGroup.add(grommet);
+      });
 
       // Right Side Solid Exterior Panel behind Motherboard Tray
       const rightSidePanel = CAD.beveledBox(1.74, 1.86, 0.02, 0.01, 0.004, mat.chassisBlackSteel);
       rightSidePanel.position.set(0, 0.05, -0.44);
       chassisGroup.add(rightSidePanel);
 
-      // 9 Hexagonal Brass Motherboard Standoffs
-      const standoffCoords = [
-        [-0.58, 0.68], [-0.15, 0.68], [0.22, 0.68],
-        [-0.58, 0.12], [-0.15, 0.12], [0.22, 0.12],
-        [-0.58, -0.44], [-0.15, -0.44], [0.22, -0.44]
-      ];
-      standoffCoords.forEach(([sx, sy]) => {
-        const standoff = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.015, 0.015, 0.042, 6).rotateX(Math.PI / 2),
-          mat.goldContacts
-        );
-        standoff.position.set(sx, sy, -0.355);
-        chassisGroup.add(standoff);
+      // 9 brass M3 standoffs at ATX positions, plus spare threaded holes for micro-ATX / mini-ITX boards
+      [-0.79, -0.31, 0.12].forEach((sx) => {
+        [0.84, 0.26, -0.33].forEach((sy) => {
+          const standoff = Parts.standoff(mat);
+          standoff.position.set(sx, sy, -0.348);
+          chassisGroup.add(standoff);
+        });
+      });
+      const spareHoleGeo = CAD.shared('traySpareHole', () => new THREE.CylinderGeometry(0.0075, 0.0075, 0.002, 16).rotateX(Math.PI / 2));
+      [[-0.79, 0.55], [0.12, 0.55], [-0.55, -0.33], [-0.05, 0.84], [-0.05, -0.33], [-0.55, 0.12]].forEach(([hx, hy]) => {
+        const spare = new THREE.Mesh(spareHoleGeo, mat.icEpoxyBlack);
+        spare.position.set(hx, hy, -0.3632);
+        chassisGroup.add(spare);
       });
 
-      // Top & Bottom Folded Steel Panels with See-Through Honeycomb Ventilation Cutouts
-      const topPanel = CAD.beveledBox(1.76, 0.038, 0.88, 0.01, 0.004, mat.chassisBlackSteel, 'y');
-      topPanel.position.set(0, 0.97, 0);
-      const topVent = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.56).rotateX(Math.PI / 2), mat.honeycombDark);
-      topVent.position.set(-0.18, 0.95, 0);
-      chassisGroup.add(topPanel, topVent);
+      // Pressed cable-tie anchor loops beside the routing cutouts
+      const anchorGeo = CAD.shared('tieAnchor', () => {
+        const pts = [];
+        for (let i = 0; i <= 10; i++) {
+          const a = (i / 10) * Math.PI;
+          pts.push(new THREE.Vector3(Math.cos(a) * 0.014, 0, Math.sin(a) * 0.011));
+        }
+        return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.0032, 8, false);
+      });
+      [[0.38, 0.65], [0.38, 0.23], [0.38, -0.2], [-0.62, -0.6], [-0.05, -0.62]].forEach(([ax, ay]) => {
+        const anchor = new THREE.Mesh(anchorGeo, mat.chassisBlackSteel);
+        anchor.position.set(ax, ay, -0.3635);
+        chassisGroup.add(anchor);
+      });
 
-      const botPanel = CAD.beveledBox(1.76, 0.042, 0.88, 0.01, 0.004, mat.chassisBlackSteel, 'y');
-      botPanel.position.set(0, -0.87, 0);
-      const botVent = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.58).rotateX(Math.PI / 2), mat.honeycombDark);
-      botVent.position.set(-0.15, -0.848, 0);
-      chassisGroup.add(botPanel, botVent);
+      // Roof and floor panels with real vent openings behind honeycomb grilles
+      const ventedPanel = (key, ventW, ventD, ventX, thickness) =>
+        CAD.shared(key, () => {
+          const shape = CAD.roundedRectShape(1.76, 0.88, 0.01);
+          shape.holes.push(CAD.roundedRectShape(ventW, ventD, 0.03, ventX, 0));
+          const geo = CAD.extrudeBeveled(shape, thickness - 0.008, 0.004, 2, 16);
+          geo.rotateX(Math.PI / 2);
+          return geo;
+        });
+      const topPanel = new THREE.Mesh(ventedPanel('caseRoof', 0.9, 0.5, -0.18, 0.038), mat.chassisBlackSteel);
+      topPanel.position.y = 0.97;
+      const topVent = new THREE.Mesh(new THREE.PlaneGeometry(0.92, 0.52).rotateX(Math.PI / 2), mat.honeycombDark);
+      topVent.position.set(-0.18, 0.97, 0);
+      const botPanel = new THREE.Mesh(ventedPanel('caseFloor', 0.42, 0.46, -0.57, 0.042), mat.chassisBlackSteel);
+      botPanel.position.y = -0.87;
+      const botVent = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.48).rotateX(Math.PI / 2), mat.honeycombDark);
+      botVent.position.set(-0.57, -0.87, 0);
+      chassisGroup.add(topPanel, topVent, botPanel, botVent);
 
-      // 4 Cylindrical Rubber Isolation Case Feet with Chrome Trim Rings
+      // Rubber PSU support pads around the floor intake
+      const padGeo = CAD.shared('psuPad', () => CAD.softBox(0.07, 0.008, 0.04));
+      [[-0.8, -0.27], [-0.8, 0.27], [-0.33, -0.27], [-0.33, 0.27]].forEach(([px, pz]) => {
+        const pad = new THREE.Mesh(padGeo, mat.rubberBlack);
+        pad.position.set(px, -0.845, pz);
+        chassisGroup.add(pad);
+      });
+
+      // 4 Cylindrical Rubber Isolation Case Feet
       [[-0.72, -0.32], [0.72, -0.32], [-0.72, 0.32], [0.72, 0.32]].forEach(([fx, fz]) => {
         const foot = new THREE.Mesh(CAD.roundedCylinderGeometry(0.095, 0.085, 0.065, 0.018, 40), mat.icEpoxyBlack);
         foot.position.set(fx, -0.92, fz);
         chassisGroup.add(foot);
       });
 
+      // Front steel frame behind the bezel: 5.25" bay window, intake window, front-panel cable hole
+      const frontFrame = new THREE.Mesh(
+        CAD.shared('caseFrontFrame', () => {
+          const shape = CAD.roundedRectShape(0.88, 1.8, 0.01, 0, 0.051);
+          shape.holes.push(CAD.roundedRectShape(0.6, 0.7, 0.01, 0, 0.5275));
+          shape.holes.push(CAD.roundedRectShape(0.6, 0.84, 0.02, 0, -0.31));
+          shape.holes.push(Parts.circlePath(0.37, -0.62, 0.022));
+          const geo = CAD.extrudeBeveled(shape, T - 0.003, 0.0015, 2, 16);
+          geo.rotateY(-Math.PI / 2);
+          return geo;
+        }),
+        mat.chassisBlackSteel
+      );
+      frontFrame.position.x = 0.829;
+      chassisGroup.add(frontFrame);
+
+      // Folded return flanges framing the open side, where the removed side panel seats
+      [
+        [1.685, 0.05, -0.0105, 0.926],
+        [1.685, 0.05, -0.0105, -0.824],
+        [0.05, 1.8, -0.828, 0.051],
+        [0.05, 1.8, 0.807, 0.051]
+      ].forEach(([w, h, x, y]) => {
+        const flange = CAD.beveledBox(w, h, T, 0.004, 0.0015, mat.chassisBlackSteel);
+        flange.position.set(x, y, 0.437);
+        chassisGroup.add(flange);
+      });
+
       setExplodeOffset(chassisGroup, 0, 0, -0.28);
       root.add(chassisGroup);
 
-      // 2B. Front Bezel Assembly (Chamfered Frame, 4 Brushed 5.25" Bay Covers & 4 Honeycomb Mesh Bays)
+      // 2B. Front Bezel Assembly (Chamfered Frame, 4 Brushed 5.25" Bay Covers, 4 Honeycomb Mesh Bays
+      // and the top control strip)
       const frontBezel = new THREE.Group();
       frontBezel.name = 'Front_Mesh_And_Bay_Bezel';
 
@@ -1993,83 +2532,195 @@
         frontBezel.add(meshTrim, meshGrille);
       }
 
+      // Top control strip: power button with moulded icon, reset button, power & HDD activity LEDs
+      const bezelTop = 1.002;
+      const powerRing = new THREE.Mesh(CAD.roundedCylinderGeometry(0.034, 0.034, 0.008, 0.003, 48), mat.chromeMetal);
+      powerRing.position.set(0.9, bezelTop + 0.004, 0.27);
+      const powerButton = new THREE.Mesh(CAD.roundedCylinderGeometry(0.026, 0.026, 0.012, 0.004, 48), mat.matteBlackPlastic);
+      powerButton.position.set(0.9, bezelTop + 0.006, 0.27);
+      const powerIcon = CAD.decal(0.034, 0.034, ProceduralTextures.getPowerIcon(), { name: 'Power_Button_Icon', roughness: 0.4 });
+      powerIcon.rotation.x = -Math.PI / 2;
+      powerIcon.position.set(0.9, bezelTop + 0.0122, 0.27);
+      const resetButton = new THREE.Mesh(CAD.roundedCylinderGeometry(0.014, 0.014, 0.008, 0.003, 32), mat.matteBlackPlastic);
+      resetButton.position.set(0.9, bezelTop + 0.004, 0.17);
+      const ledGeo = CAD.shared('bezelLed', () => CAD.softBox(0.012, 0.004, 0.024));
+      const powerLed = new THREE.Mesh(ledGeo, mat.ledBlue);
+      powerLed.position.set(0.9, bezelTop + 0.001, 0.11);
+      const hddLed = new THREE.Mesh(ledGeo, mat.ledAmber);
+      hddLed.position.set(0.9, bezelTop + 0.001, 0.075);
+      frontBezel.add(powerRing, powerButton, powerIcon, resetButton, powerLed, hddLed);
+
       setExplodeOffset(frontBezel, 0.55, 0, 0);
       root.add(frontBezel);
 
-      // 2C. Internal 5.25" Optical Cage & 3.5" HDD Cage with Tool-Less Sleds
+      // 2C. Open sheet-metal drive cages: 5.25" optical cage with drive rails and tool-less latches,
+      // 3.5" cage carrying four tool-less drive sleds
       const cagesGroup = new THREE.Group();
       cagesGroup.name = 'Internal_Optical_And_HDD_Cages';
+      const railGeo = CAD.shared('cageGuideRail', () => CAD.softBox(0.36, 0.008, 0.01));
 
-      const oddCage = CAD.beveledBox(0.50, 0.64, 0.82, 0.01, 0.004, mat.chassisBlackSteel);
-      oddCage.position.set(0.56, 0.62, 0);
-      cagesGroup.add(oddCage);
-
-      // Stamped Side Slots on Optical Cage
-      for (let slot = 0; slot < 3; slot++) {
-        const slotCut = new THREE.Mesh(CAD.softBox(0.32, 0.045, 0.84), mat.icEpoxyBlack);
-        slotCut.position.set(0.56, 0.76 - slot * 0.16, 0);
-        cagesGroup.add(slotCut);
+      const ODD = { x0: 0.36, x1: 0.826, y0: 0.17, y1: 0.951, z: 0.305 };
+      const bayY = (b) => 0.79 - b * 0.175;
+      const oddWallGeo = CAD.shared('oddCageWall', () => {
+        const shape = CAD.roundedRectShape(ODD.x1 - ODD.x0, ODD.y1 - ODD.y0, 0.008, (ODD.x0 + ODD.x1) / 2, (ODD.y0 + ODD.y1) / 2);
+        for (let b = 0; b < 4; b++) {
+          [0.46, 0.72].forEach((x) => shape.holes.push(Parts.circlePath(x, bayY(b) - 0.035, 0.009)));
+          shape.holes.push(CAD.roundedRectShape(0.13, 0.022, 0.011, 0.585, bayY(b) + 0.03));
+        }
+        return CAD.extrudeBeveled(shape, T - 0.003, 0.0015, 2, 12);
+      });
+      [-1, 1].forEach((side) => {
+        const wall = new THREE.Mesh(oddWallGeo, mat.chassisBlackSteel);
+        wall.position.z = side * ODD.z;
+        cagesGroup.add(wall);
+        // Embossed drive rails along the bottom of each bay
+        for (let b = 0; b < 4; b++) {
+          const rail = new THREE.Mesh(railGeo, mat.chassisBlackSteel);
+          rail.position.set(0.6, bayY(b) - 0.0815, side * (ODD.z - 0.0075));
+          cagesGroup.add(rail);
+        }
+      });
+      const oddFloor = new THREE.Mesh(
+        CAD.shared('oddCageFloor', () => {
+          const shape = CAD.roundedRectShape(ODD.x1 - ODD.x0, ODD.z * 2 + T, 0.008, (ODD.x0 + ODD.x1) / 2, 0);
+          [-0.15, 0.15].forEach((z) => shape.holes.push(CAD.roundedRectShape(0.3, 0.07, 0.03, 0.6, z)));
+          const geo = CAD.extrudeBeveled(shape, T - 0.003, 0.0015, 2, 12);
+          geo.rotateX(Math.PI / 2);
+          return geo;
+        }),
+        mat.chassisBlackSteel
+      );
+      oddFloor.position.y = ODD.y0;
+      cagesGroup.add(oddFloor);
+      for (let b = 0; b < 4; b++) {
+        const latch = Parts.bayLatch(mat);
+        latch.position.set(0.585, bayY(b) + 0.03, ODD.z + 0.011);
+        cagesGroup.add(latch);
       }
 
-      const hddCage = CAD.beveledBox(0.46, 0.68, 0.82, 0.01, 0.004, mat.chassisBlackSteel);
-      hddCage.position.set(0.58, -0.50, 0);
-      cagesGroup.add(hddCage);
-
-      for (let s = 0; s < 4; s++) {
-        const trayCavity = new THREE.Mesh(CAD.softBox(0.36, 0.09, 0.84), mat.icEpoxyBlack);
-        trayCavity.position.set(0.58, -0.25 - s * 0.16, 0);
-        cagesGroup.add(trayCavity);
+      const HDD = { x0: 0.4, x1: 0.826, y0: -0.849, y1: -0.08, z: 0.228 };
+      const sledY = (b) => -0.2 - b * 0.16;
+      const hddWallGeo = CAD.shared('hddCageWall', () => {
+        const shape = CAD.roundedRectShape(HDD.x1 - HDD.x0, HDD.y1 - HDD.y0, 0.008, (HDD.x0 + HDD.x1) / 2, (HDD.y0 + HDD.y1) / 2);
+        for (let b = 0; b < 4; b++) shape.holes.push(CAD.roundedRectShape(0.22, 0.06, 0.03, 0.6, sledY(b) + 0.06));
+        return CAD.extrudeBeveled(shape, T - 0.003, 0.0015, 2, 12);
+      });
+      [-1, 1].forEach((side) => {
+        const wall = new THREE.Mesh(hddWallGeo, mat.chassisBlackSteel);
+        wall.position.z = side * HDD.z;
+        cagesGroup.add(wall);
+        // Pairs of guide rails that the sled rails slide between
+        for (let b = 0; b < 4; b++) {
+          [-0.017, 0.017].forEach((dy) => {
+            const rail = new THREE.Mesh(railGeo, mat.chassisBlackSteel);
+            rail.position.set(0.613, sledY(b) + dy, side * (HDD.z - 0.0075));
+            cagesGroup.add(rail);
+          });
+        }
+      });
+      const hddRoof = CAD.beveledBox(HDD.x1 - HDD.x0, T, HDD.z * 2 + T, 0.006, 0.0015, mat.chassisBlackSteel, 'y');
+      hddRoof.position.set((HDD.x0 + HDD.x1) / 2, HDD.y1, 0);
+      cagesGroup.add(hddRoof);
+      for (let b = 0; b < 4; b++) {
+        const sled = Parts.driveSled(mat);
+        sled.position.set(0.608, sledY(b), 0);
+        cagesGroup.add(sled);
       }
 
       setExplodeOffset(cagesGroup, 0.25, 0, 0.38);
       root.add(cagesGroup);
 
-      // 2D. Rear Panel with See-Through 120mm Exhaust Honeycomb, I/O Cutout, PSU Cutout & 7 PCIe Brackets
+      // 2D. Rear panel: I/O shield cutout beside the 120mm exhaust fan, 7 vented slot covers with
+      // thumbscrews, and the bottom PSU opening with its four mounting holes
       const rearGroup = new THREE.Group();
       rearGroup.name = 'Rear_Exhaust_And_PCIe_Slots';
+      const FAN = { z: 0.155, y: 0.6, r: 0.232, screw: 0.195 };
 
-      const rearShape = CAD.roundedRectShape(0.88, 1.84, 0.01);
-      // Rear I/O Shield Cutout, 120mm Fan Cutout, and Bottom PSU Cutout
-      [
-        [-0.36, 0.30, 0.16, 0.48], // I/O Shield Cutout
-        [-0.14, 0.32, 0.44, 0.44], // 120mm Fan Cutout
-        [-0.28, -0.78, 0.56, 0.32] // Bottom PSU Cutout
-      ].forEach(([x, y, w, h]) => {
-        const hole = new THREE.Path();
-        hole.moveTo(x, y);
-        hole.lineTo(x + w, y);
-        hole.lineTo(x + w, y + h);
-        hole.lineTo(x, y + h);
-        hole.closePath();
-        rearShape.holes.push(hole);
-      });
-
-      const rearGeo = CAD.extrudeBeveled(rearShape, 0.028, 0.003, 2, 16);
-      rearGeo.rotateY(Math.PI / 2);
-      const rearWall = new THREE.Mesh(rearGeo, mat.chassisBlackSteel);
-      rearWall.position.set(-0.87, 0.05, 0);
+      const rearWall = new THREE.Mesh(
+        CAD.shared('caseRearWall', () => {
+          const shape = CAD.roundedRectShape(0.88, 1.84, 0.01, 0, 0.05);
+          shape.holes.push(CAD.roundedRectShape(0.18, 0.66, 0.006, -0.22, 0.53)); // I/O shield cutout
+          shape.holes.push(Parts.circlePath(FAN.z, FAN.y, FAN.r)); // 120mm exhaust opening
+          [-1, 1].forEach((a) => [-1, 1].forEach((b) => shape.holes.push(Parts.circlePath(FAN.z + a * FAN.screw, FAN.y + b * FAN.screw, 0.008))));
+          shape.holes.push(CAD.roundedRectShape(0.43, 0.575, 0.006, -0.085, -0.1325)); // expansion-slot opening
+          shape.holes.push(CAD.roundedRectShape(0.6, 0.35, 0.012, 0, -0.645)); // PSU opening
+          [-1, 1].forEach((a) => [-0.455, -0.835].forEach((y) => shape.holes.push(Parts.circlePath(a * 0.33, y, 0.008))));
+          const geo = CAD.extrudeBeveled(shape, 0.028, 0.003, 2, 24);
+          geo.rotateY(-Math.PI / 2);
+          return geo;
+        }),
+        mat.chassisBlackSteel
+      );
+      rearWall.position.x = -0.87;
       rearGroup.add(rearWall);
 
-      // See-Through Rear 120mm Honeycomb Grille
-      const rearHoneycomb = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.46, 0.46).rotateY(Math.PI / 2),
-        mat.honeycombDark
-      );
-      rearHoneycomb.position.set(-0.87, 0.59, 0.08);
-      rearGroup.add(rearHoneycomb);
+      // Round honeycomb grille across the fan opening, the stock exhaust fan behind it and its screws
+      const rearGrille = new THREE.Mesh(new THREE.CircleGeometry(FAN.r + 0.004, 64).rotateY(-Math.PI / 2), mat.honeycombDark);
+      rearGrille.position.set(-0.87, FAN.y, FAN.z);
+      rearGroup.add(rearGrille);
 
-      // 7 Ventilated PCIe Expansion Slot Covers with Thumbscrews
+      const exhaustFan = buildCaseFanModel();
+      exhaustFan.name = 'Rear_120mm_Exhaust_Fan';
+      const fanLead = exhaustFan.getObjectByName('Fan_Coiled_Power_Lead');
+      if (fanLead) exhaustFan.remove(fanLead);
+      exhaustFan.scale.setScalar(0.41);
+      exhaustFan.rotation.y = -Math.PI / 2;
+      exhaustFan.position.set(-0.796, FAN.y, FAN.z);
+      rearGroup.add(exhaustFan);
+      [-1, 1].forEach((a) => {
+        [-1, 1].forEach((b) => {
+          const screw = CAD.createFastener(0.013, 0.008, mat.chromeMetal, mat.icEpoxyBlack);
+          screw.rotation.z = Math.PI / 2;
+          screw.position.set(-0.891, FAN.y + b * FAN.screw, FAN.z + a * FAN.screw);
+          rearGroup.add(screw);
+        });
+      });
+
+      // 7 vented expansion-slot covers seated behind the opening, each held by a knurled thumbscrew
+      const coverGeo = Parts.profileX('slotCover', () => {
+        const shape = CAD.roundedRectShape(0.45, 0.074, 0.006);
+        for (let v = 0; v < 6; v++) shape.holes.push(CAD.roundedRectShape(0.048, 0.014, 0.007, -0.165 + v * 0.062, 0));
+        return shape;
+      }, 0.004, 0.0008);
+      const tabGeo = CAD.shared('slotCoverTab', () => CAD.softBox(0.004, 0.06, 0.042));
       for (let p = 0; p < 7; p++) {
-        const py = 0.16 - p * 0.068;
-        const bracket = new THREE.Mesh(CAD.softBox(0.03, 0.046, 0.40), mat.honeycombDark);
-        bracket.position.set(-0.865, py, 0.12);
-        const screw = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.025, 12).rotateZ(Math.PI / 2), mat.chromeMetal);
-        screw.position.set(-0.85, py, 0.33);
-        rearGroup.add(bracket, screw);
+        const py = 0.115 - p * 0.083;
+        const cover = new THREE.Mesh(coverGeo, mat.chassisBlackSteel);
+        cover.position.set(-0.8505, py, -0.085);
+        const tab = new THREE.Mesh(tabGeo, mat.chassisBlackSteel);
+        tab.position.set(-0.889, py, 0.158);
+        const screw = Parts.thumbscrew(mat);
+        screw.position.set(-0.891, py, 0.158);
+        rearGroup.add(cover, tab, screw);
       }
 
       setExplodeOffset(rearGroup, -0.52, 0, 0);
       root.add(rearGroup);
+
+      // 2E. Front-panel leads: power/reset switch and LED twisted pairs entering through the front
+      // frame, tied into a bundle and lying on the floor with their 2-pin header plugs staggered
+      const pinPlugGeo = CAD.shared('frontPanelPlug', () => CAD.softBox(0.05, 0.012, 0.02));
+      const leads = [
+        { conductors: [mat.wireGreen, mat.wireWhite], offset: [-0.007, -0.007], end: 0.86 },
+        { conductors: [mat.wireBlue, mat.wireWhite], offset: [0.007, -0.007], end: 0.9 },
+        { conductors: [mat.wireRed, mat.wireWhite], offset: [-0.007, 0.007], end: 0.95 },
+        { conductors: [mat.wireOrange, mat.wireWhite], offset: [0.007, 0.007], end: 1 }
+      ].map((lead) => ({ ...lead, twist: 0.0028, radius: 0.0023, plugGeo: pinPlugGeo, plugMat: mat.matteBlackPlastic, plugLength: 0.05 }));
+      const frontPanelLeads = Parts.cableBundle(
+        [
+          new THREE.Vector3(0.86, -0.62, 0.37),
+          new THREE.Vector3(0.74, -0.665, 0.375),
+          new THREE.Vector3(0.55, -0.795, 0.36),
+          new THREE.Vector3(0.32, -0.832, 0.33),
+          new THREE.Vector3(0.06, -0.836, 0.27),
+          new THREE.Vector3(-0.16, -0.836, 0.22)
+        ],
+        leads,
+        { ties: [0.33, 0.6], tieRadius: 0.016, tieMat: mat.icEpoxyBlack }
+      );
+      frontPanelLeads.name = 'Front_Panel_Switch_LED_Leads';
+      setExplodeOffset(frontPanelLeads, 0, 0.12, 0.3);
+      root.add(frontPanelLeads);
 
       return root;
     }
@@ -2579,53 +3230,46 @@
       setExplodeOffset(heatsinkGroup, 0.15, 0.44, 0.1);
       root.add(heatsinkGroup);
 
-      // 5F. Rear I/O Shield Cluster, 24-Pin ATX, SATA Ports, Toroidal Copper Chokes & CMOS Battery
+      // 5F. Rear I/O Connector Cluster: real openings with recessed inserts, tongues and contacts,
+      // faces protruding just past the board's rear edge (x = -0.98)
+      const ioGroup = new THREE.Group();
+      ioGroup.name = 'Rear_IO_Connector_Cluster';
+      const placeIO = (part, z) => {
+        part.position.set(-0.995, 0.019, z);
+        ioGroup.add(part);
+      };
+
+      // Stacked PS/2 mouse (green, top) over keyboard (purple) Mini-DIN ports
+      placeIO(Parts.ps2Stack(mat), -0.64);
+
+      // Parallel DB25 (female, magenta) stacked over serial DB9 (male, teal) on one moulded body
+      const dsubStack = new THREE.Group();
+      const dsubBody = CAD.beveledBox(0.15, 0.225, 0.3, 0.006, 0.003, mat.matteBlackPlastic);
+      dsubBody.position.set(0.081, 0.1125, 0);
+      const db25 = Parts.dSub({ pins: 25, fw: 0.34, fh: 0.09, top: 0.25, bot: 0.218, dh: 0.052, pitch: 0.0172, female: true }, mat.portMagenta, mat);
+      db25.position.y = 0.17;
+      const db9 = Parts.dSub({ pins: 9, fw: 0.2, fh: 0.08, top: 0.118, bot: 0.096, dh: 0.05, pitch: 0.0178, female: false }, mat.portTeal, mat);
+      db9.position.y = 0.06;
+      dsubStack.add(dsubBody, db25, db9);
+      placeIO(dsubStack, -0.34);
+
+      // Gigabit LAN over dual USB 2.0 (black tongues), a dual USB 3.0 stack (blue tongues), audio jacks
+      placeIO(Parts.usbStack(2, true, mat.icEpoxyBlack, mat), -0.02);
+      placeIO(Parts.usbStack(2, false, mat.slotBlue, mat), 0.2);
+      placeIO(Parts.audioStack(mat), 0.42);
+
+      setExplodeOffset(ioGroup, -0.32, 0.2, 0);
+      root.add(ioGroup);
+
+      // 5G. VRM Power Stage & On-Board Headers: 24-pin / 4-pin power, SATA, chokes, capacitors, CMOS
       const ioAndVRM = new THREE.Group();
-      ioAndVRM.name = 'Rear_IO_And_VRM_Power_Stage';
+      ioAndVRM.name = 'VRM_Power_Stage_And_Headers';
 
-      // Dual PS/2 Port Tower (Purple Keyboard + Green Mouse Mini-DIN)
-      const ps2Tower = CAD.beveledBox(0.15, 0.27, 0.15, 0.006, 0.003, mat.brushedNickel, 'y');
-      ps2Tower.position.set(-0.88, 0.15, -0.64);
-      const ps2Green = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 32).rotateZ(Math.PI / 2), mat.portGreenPS2);
-      ps2Green.position.set(-0.955, 0.21, -0.64);
-      const ps2Purple = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.02, 32).rotateZ(Math.PI / 2), mat.portPurplePS2);
-      ps2Purple.position.set(-0.955, 0.095, -0.64);
-      ioAndVRM.add(ps2Tower, ps2Green, ps2Purple);
-
-      // Stacked Magenta Parallel (DB25) + Teal Serial (DB9) Ports with Hex Jackscrews
-      const lptBody = CAD.beveledBox(0.16, 0.11, 0.38, 0.006, 0.003, mat.portMagenta, 'y');
-      lptBody.position.set(-0.87, 0.19, -0.34);
-      const comBody = CAD.beveledBox(0.16, 0.09, 0.24, 0.006, 0.003, mat.portTeal, 'y');
-      comBody.position.set(-0.87, 0.08, -0.34);
-      ioAndVRM.add(lptBody, comBody);
-
-      // 2 Stacked USB + RJ45 Ethernet Shielded Towers
-      [-0.02, 0.20].forEach((uz) => {
-        const usbTower = CAD.beveledBox(0.19, 0.26, 0.18, 0.006, 0.003, mat.brushedNickel, 'y');
-        usbTower.position.set(-0.86, 0.145, uz);
-        for (let slot = 0; slot < 3; slot++) {
-          const usbPort = new THREE.Mesh(CAD.softBox(0.03, 0.032, 0.11), mat.slotBlue);
-          usbPort.position.set(-0.945, 0.07 + slot * 0.07, uz);
-          ioAndVRM.add(usbPort);
-        }
-        ioAndVRM.add(usbTower);
-      });
-
-      // 3-Jack Color-Coded Audio Cluster (Blue Line-In, Green Line-Out, Pink Mic)
-      const audioTower = CAD.beveledBox(0.16, 0.25, 0.15, 0.006, 0.003, mat.brushedNickel, 'y');
-      audioTower.position.set(-0.86, 0.14, 0.42);
-      ioAndVRM.add(audioTower);
-      [mat.portMagenta, mat.portGreenPS2, mat.slotBlue].forEach((jMat, idx) => {
-        const jack = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 0.03, 32).rotateZ(Math.PI / 2), jMat);
-        jack.position.set(-0.945, 0.065 + idx * 0.072, 0.42);
-        ioAndVRM.add(jack);
-      });
-
-      // White 24-Pin ATX Main Power Header & 4-Pin CPU 12V Header
-      const atx24 = CAD.beveledBox(0.105, 0.115, 0.46, 0.005, 0.002, mat.slotWhite, 'y');
-      atx24.position.set(0.74, 0.072, -0.40);
-      const atx4 = CAD.beveledBox(0.11, 0.11, 0.11, 0.005, 0.002, mat.slotWhite, 'y');
-      atx4.position.set(-0.68, 0.07, -0.64);
+      // 24-pin ATX main power and 4-pin ATX12V headers with keyed cavities, tin pins and latch ramps
+      const atx24 = Parts.powerHeader(12, 2, 0.04, 0.036, 0.105, 0.46, 0.115, mat);
+      atx24.position.set(0.74, 0.016, -0.4);
+      const atx4 = Parts.powerHeader(2, 2, 0.04, 0.04, 0.11, 0.11, 0.11, mat);
+      atx4.position.set(-0.68, 0.016, -0.64);
       ioAndVRM.add(atx24, atx4);
 
       // CR2032 Silver Coin-Cell CMOS Battery in Holder
@@ -2642,8 +3286,8 @@
       for (let s = 0; s < 8; s++) {
         const col = Math.floor(s / 4);
         const row = s % 4;
-        const sata = CAD.beveledBox(0.09, 0.072, 0.055, 0.003, 0.002, row < 2 ? mat.slotBlue : mat.icEpoxyBlack, 'y');
-        sata.position.set(0.84 - col * 0.11, 0.052, 0.12 + row * 0.085);
+        const sata = Parts.sataPort(row < 2 ? mat.slotBlue : mat.icEpoxyBlack, mat);
+        sata.position.set(0.84 - col * 0.11, 0.016, 0.12 + row * 0.085);
         ioAndVRM.add(sata);
       }
 
@@ -3291,14 +3935,16 @@
         id: 'PC_Case',
         filename: 'PC_Case.glb',
         title: '2. Open-Sided Mid-Tower Case',
-        subtitle: 'ATX Tray with Cutouts, Brass Standoffs, Cages & Mesh Front',
+        subtitle: 'ATX Tray, Grommets, Tool-less Cages, Exhaust Fan & Mesh Front',
         builder: buildPCCaseModel,
         camPos: [2.15, 1.05, 2.25],
         callouts: [
-          { pos: [-0.15, 0.40, -0.35], tag: 'ATX Tray & Brass Standoffs', desc: 'Recessed steel motherboard tray with 9 hexagonal brass standoffs and a large cutout for CPU cooler backplate access.' },
-          { pos: [0.95, 0.62, 0], tag: '5.25" Optical & Mesh Bays', desc: 'Top 4 removable brushed bay covers for optical drives and bottom 4 perforated honeycomb intake grilles.' },
-          { pos: [0.58, -0.50, 0.25], tag: '3.5" Internal HDD Cage', desc: 'Lower drive bay cage holding 3.5-inch mechanical hard drives directly behind the front intake airflow path.' },
-          { pos: [-0.86, -0.05, 0.15], tag: '7x PCIe Expansion Slots', desc: 'Ventilated rear expansion brackets with thumbscrews for securing dedicated GPUs and add-in PCIe cards.' }
+          { pos: [-0.31, 0.26, -0.33], tag: 'ATX Tray & Brass Standoffs', desc: 'Steel motherboard tray with 9 brass M3 standoffs at ATX positions and a backplate window for swapping CPU coolers without removing the board.' },
+          { pos: [0.27, 0.65, -0.35], tag: 'Rubber Cable Grommets', desc: 'Slit rubber grommets line the routing cutouts so power and data cables pass behind the tray without chafing on bare steel edges.' },
+          { pos: [0.95, 0.62, 0], tag: '5.25" Optical & Mesh Bays', desc: 'Top 4 removable brushed bay covers over an open optical cage with tool-less latches, and 4 perforated honeycomb intake grilles below.' },
+          { pos: [0.6, -0.36, 0.23], tag: '3.5" Cage & Tool-less Sleds', desc: 'Lower drive cage with four tool-less plastic sleds; a hard drive clips into a sled and slides in directly behind the front intake airflow.' },
+          { pos: [-0.8, 0.6, 0.155], tag: '120mm Rear Exhaust Fan', desc: 'Pre-installed fan behind the honeycomb grille pulls hot air out of the CPU area, opposite the cool air drawn in at the front.' },
+          { pos: [-0.87, -0.13, -0.08], tag: '7x PCIe Expansion Slots', desc: 'Vented slot covers held by knurled thumbscrews; remove one to fit a graphics card or other PCIe add-in card.' }
         ]
       },
       {
