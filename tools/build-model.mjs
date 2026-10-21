@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import vm from 'node:vm';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
 
@@ -71,6 +72,8 @@ async function serveCDN(route) {
   }
 }
 
+// The browser runs model code, so keep its OS sandbox on wherever the system allows it (Playwright turns
+// it off by default; it cannot start in some containers or as root)
 async function launchBrowser() {
   const options = [
     process.env.STUDIO_BROWSER && { executablePath: process.env.STUDIO_BROWSER },
@@ -79,22 +82,40 @@ async function launchBrowser() {
     {} // Playwright's own Chromium, if installed with `npx playwright install chromium`
   ].filter(Boolean);
   for (const option of options) {
-    try {
-      // Software WebGL is allowed as a fallback on machines where headless mode gets no GPU
-      return await chromium.launch({ ...option, args: ['--enable-unsafe-swiftshader'] });
-    } catch {
-      // try the next browser
+    for (const chromiumSandbox of [true, false]) {
+      try {
+        return await chromium.launch({ ...option, chromiumSandbox });
+      } catch {
+        // try without the sandbox, then the next browser
+      }
     }
   }
   throw new Error('No Chromium-based browser found. Install Google Chrome or Microsoft Edge, or set STUDIO_BROWSER to its executable.');
+}
+
+// Compile without running, so a syntax error names its line (the browser's loader does not)
+function syntaxProblem(code, file) {
+  try {
+    new vm.Script(code, { filename: file });
+    return null;
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) return null;
+    const [where] = String(err.stack).split('\n\n');
+    return `SyntaxError: ${err.message}\n${where}`;
+  }
 }
 
 // Runs inside the studio page: build in the sandbox, render the views and a contact sheet
 async function buildInPage({ code, name, size, bottom }) {
   const result = await BuildSandbox.build(code); // eslint-disable-line no-undef
   if (!result.ok) return { ok: false, error: result.error, logs: result.logs || [] };
-  const template = buildStudioTemplate(await parseGLB(result.glb.slice(0)), { fileBase: name }); // eslint-disable-line no-undef
-  const views = captureModelViews(template, size, { bottom }); // eslint-disable-line no-undef
+  let views;
+  try {
+    const template = buildStudioTemplate(await parseGLB(result.glb.slice(0)), { fileBase: name }); // eslint-disable-line no-undef
+    views = captureModelViews(template, size, { bottom }); // eslint-disable-line no-undef
+  } catch (err) {
+    return { ok: false, error: `The code ran, but its exported .glb could not be displayed: ${err.message}`, logs: result.logs || [] };
+  }
 
   const cell = 512;
   const footer = 64;
@@ -171,6 +192,12 @@ async function main() {
   }
   const file = path.resolve(args.file);
   const code = fs.readFileSync(file, 'utf8');
+  const syntax = syntaxProblem(code, file);
+  if (syntax) {
+    console.log(`✖ Build failed: ${syntax}`);
+    process.exitCode = 1;
+    return;
+  }
   const outDir = path.resolve(args.out || path.dirname(file));
   const fallbackName = toName(path.basename(file, path.extname(file)) === 'model' ? path.basename(path.dirname(file)) : path.basename(file));
 
@@ -179,6 +206,9 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     const pageErrors = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));
+    // Nothing but the cached CDN scripts may load: the page renders model files, which must not reach the
+    // network. Routes registered later take precedence over this catch-all.
+    await page.route('**/*', (route) => (/^(file|data|blob):/i.test(route.request().url()) ? route.continue() : route.abort()));
     await page.route(CDN, serveCDN);
     // Web fonts only style the studio's panels, which are not rendered here
     await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) => route.abort());

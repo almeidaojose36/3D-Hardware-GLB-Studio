@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Requests and images are limited to the studio server, the script CDNs and in-memory data, so a model
+       file (or AI Builder code) cannot make the page contact other hosts -->
+  <meta http-equiv="Content-Security-Policy" content="connect-src 'self' data: blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; img-src 'self' data: blob:" />
   <title>3D PC Hardware Procedural GLB Studio & Exporter</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1116,6 +1119,70 @@
         return tex;
       },
 
+      // Layered artwork for boards, labels and panels whose print, copper, gold and solder mask each need
+      // their own relief and finish (PCBs of any colour, SSD and graphics-card boards, embossed plates).
+      // draw receives { paint, text, rect, circle, poly, w, h, rnd }. paint(shape, colour, height 0-1,
+      // roughness 0-1, metalness 0-1, strokeWidth = 0) fills (or strokes) the shape on the colour, height and
+      // roughness/metal layers together; text(str, x, y, sizePx, colour, height, roughness, metalness,
+      // weight = 700, align = 'left') prints on all three. Paint the background first. Returns
+      // { map, normalMap, ormMap } for a material with color 0xffffff, roughness 1 and metalness 1 (the maps
+      // carry the real values), like createPBRMaterials().greenPCB.
+      layeredArtwork(key, w, h, draw, { normalStrength = 1.4 } = {}) {
+        const cacheKey = `layered:${key}`;
+        if (this.cache[cacheKey]) return this.cache[cacheKey];
+        const col = this.canvas(w, h);
+        const hgt = this.canvas(w, h);
+        const orm = this.canvas(w, h);
+        const layers = [col, hgt, orm].map((c) => this.readableContext(c));
+        const styles = (colour, height, rough, metal) => {
+          const g = Math.round(Math.max(0, Math.min(1, height)) * 255);
+          return [colour, `rgb(${g},${g},${g})`, `rgb(255,${Math.round(rough * 255)},${Math.round(metal * 255)})`];
+        };
+        styles('#000000', 0, 0.6, 0).forEach((style, i) => {
+          layers[i].fillStyle = style;
+          layers[i].fillRect(0, 0, w, h);
+        });
+        const paint = (shape, colour, height, rough, metal, stroke = 0) => {
+          const st = styles(colour, height, rough, metal);
+          layers.forEach((ctx, i) => {
+            ctx.fillStyle = st[i];
+            ctx.strokeStyle = st[i];
+            ctx.lineWidth = stroke;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            shape(ctx);
+            if (stroke) ctx.stroke();
+            else ctx.fill();
+          });
+        };
+        const text = (str, x, y, size, colour, height = 0.6, rough = 0.5, metal = 0, weight = 700, align = 'left') => {
+          const st = styles(colour, height, rough, metal);
+          layers.forEach((ctx, i) => {
+            ctx.font = `${weight} ${size}px Arial, Helvetica, sans-serif`;
+            ctx.textAlign = align;
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillStyle = st[i];
+            ctx.fillText(str, x, y);
+          });
+        };
+        const rect = (x, y, rw, rh) => (ctx) => ctx.rect(x, y, rw, rh);
+        const circle = (x, y, r) => (ctx) => ctx.arc(x, y, r, 0, Math.PI * 2);
+        const poly = (pts) => (ctx) => {
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+          ctx.closePath();
+        };
+        draw({ paint, text, rect, circle, poly, w, h, rnd: seededRandom(key.length * 131 + w) });
+        const height = this.blur(this.heightFromCanvas(hgt), w, h, 1);
+        this.cache[cacheKey] = {
+          map: this.toTexture(col, { color: true }),
+          normalMap: this.toTexture(this.normalCanvas(height, w, h, normalStrength)),
+          ormMap: this.toTexture(orm)
+        };
+        return this.cache[cacheKey];
+      },
+
       roundRect(ctx, x, y, w, h, r) {
         ctx.beginPath();
         ctx.moveTo(x + r, y);
@@ -1669,9 +1736,9 @@
         return out;
       },
 
-      // Tile surface maps across a large part. Extruded and rounded-box UVs span 0..1 over the whole part,
-      // so without this one texture tile stretches over it. Scales in place: pass a geometry you own, not
-      // a shared one (CAD.shared, beveledBox) unless every user of it should change.
+      // Tile surface maps more densely across a large part. Extruded and rounded-box UVs span 0..1 over the
+      // whole part (the factory maps then repeat 1-5x on their own). Scales in place: pass a geometry you
+      // own, not a shared one (CAD.shared, beveledBox) unless every user of it should change.
       scaleUVs(geometry, su, sv = su) {
         const uv = geometry.attributes.uv;
         if (!uv) return geometry;
@@ -5282,9 +5349,41 @@
       }
     };
 
+    // Model files must carry all their data. External buffer or image URIs would make the page fetch them,
+    // from anywhere, so they are refused; the studio's exporter and the AI generators never write them.
+    function assertSelfContained(arrayBuffer) {
+      const bytes = new Uint8Array(arrayBuffer);
+      const decoder = new TextDecoder();
+      let json;
+      try {
+        if (decoder.decode(bytes.subarray(0, 4)) === 'glTF') {
+          const view = new DataView(arrayBuffer);
+          if (view.getUint32(16, true) !== 0x4e4f534a) throw new Error('first chunk is not JSON');
+          json = JSON.parse(decoder.decode(bytes.subarray(20, 20 + view.getUint32(12, true))));
+        } else {
+          json = JSON.parse(decoder.decode(bytes));
+        }
+      } catch (err) {
+        throw new Error('Not a valid glTF file');
+      }
+      const refs = [...(Array.isArray(json.buffers) ? json.buffers : []), ...(Array.isArray(json.images) ? json.images : [])];
+      if (refs.some((item) => item && typeof item.uri === 'string' && !/^data:/i.test(item.uri))) {
+        throw new Error('The model refers to external files; only self-contained .glb files can be loaded');
+      }
+    }
+
     function parseGLB(arrayBuffer) {
       return new Promise((resolve, reject) => {
-        const loader = new THREE.GLTFLoader();
+        try {
+          assertSelfContained(arrayBuffer);
+        } catch (err) {
+          reject(err);
+          return;
+        }
+        // Backstop for the check above: whatever a file says, the loader only ever reads embedded data
+        const manager = new THREE.LoadingManager();
+        manager.setURLModifier((url) => (/^(data|blob):/i.test(url) ? url : 'data:,'));
+        const loader = new THREE.GLTFLoader(manager);
         if (THREE.DRACOLoader) {
           const draco = new THREE.DRACOLoader();
           draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
@@ -5297,25 +5396,29 @@
     // Centre the model, scale its largest dimension to the studio's ~1.6-unit working size, name its parts
     // and give multi-part models an exploded view, so it behaves like the built-in hardware
     function buildStudioTemplate(gltfScene, record) {
+      // Explode offsets written by this studio (its own exports and AI Builder models) come back as node
+      // extras; keep those and only invent offsets for models that have none. A file exported while
+      // exploded stores the assembled position as basePos, so return each part there before measuring.
+      const finite = (v) => v && [v.x, v.y, v.z].every(Number.isFinite);
+      let authoredExplode = false;
+      gltfScene.traverse((node) => {
+        const v = node.userData.explodeVec;
+        const base = node.userData.basePos;
+        delete node.userData.explodeVec;
+        delete node.userData.basePos;
+        if (finite(v)) {
+          if (finite(base)) node.position.set(base.x, base.y, base.z);
+          setExplodeOffset(node, v.x, v.y, v.z);
+          authoredExplode = true;
+        }
+      });
+
       gltfScene.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(gltfScene);
       if (box.isEmpty()) throw new Error('The model contains no visible geometry');
       const size = box.getSize(new THREE.Vector3());
       const centre = box.getCenter(new THREE.Vector3());
       const scale = 1.6 / Math.max(size.x, size.y, size.z, 1e-6);
-
-      // Explode offsets written by this studio (its own exports and AI Builder models) come back as node
-      // extras; keep those and only invent offsets for models that have none
-      let authoredExplode = false;
-      gltfScene.traverse((node) => {
-        const v = node.userData.explodeVec;
-        delete node.userData.explodeVec;
-        delete node.userData.basePos;
-        if (v && [v.x, v.y, v.z].every(Number.isFinite)) {
-          setExplodeOffset(node, v.x, v.y, v.z);
-          authoredExplode = true;
-        }
-      });
 
       let parts = gltfScene.children.filter((child) => {
         let hasMesh = false;
@@ -5328,10 +5431,15 @@
       if (parts.length === 1 && parts[0].children.length > 1) parts = parts[0].children;
       if (!authoredExplode && parts.length > 1) {
         parts.forEach((part) => {
-          const dir = new THREE.Box3().setFromObject(part).getCenter(new THREE.Vector3()).sub(centre);
+          const partCentre = new THREE.Box3().setFromObject(part).getCenter(new THREE.Vector3());
+          const dir = partCentre.clone().sub(centre);
           if (dir.lengthSq() < 1e-10) return;
-          dir.normalize().multiplyScalar(0.35 / scale);
-          setExplodeOffset(part, dir.x, dir.y, dir.z);
+          // 0.35 studio units outward, expressed in the part's parent frame (wrapped roots are often
+          // scaled or rotated, e.g. centimetre or Z-up exports)
+          const toParent = new THREE.Matrix4().copy(part.parent.matrixWorld).invert();
+          const target = partCentre.clone().addScaledVector(dir.normalize(), 0.35 / scale).applyMatrix4(toParent);
+          const offset = target.sub(partCentre.clone().applyMatrix4(toParent));
+          setExplodeOffset(part, offset.x, offset.y, offset.z);
         });
       }
 
@@ -5359,7 +5467,7 @@
       template.updateMatrixWorld(true);
       const gltfScene = template.children[0] && template.children[0].children[0];
       if (!gltfScene) return [];
-      const modelRoot = gltfScene.children.length === 1 ? gltfScene.children[0] : gltfScene;
+      const modelRoot = builderInfoNode(gltfScene) || (gltfScene.children.length === 1 ? gltfScene.children[0] : gltfScene);
       return callouts
         .filter((c) => c && Array.isArray(c.pos) && c.pos.length === 3 && c.pos.every(Number.isFinite))
         .map((c) => ({
@@ -5433,9 +5541,20 @@
 
     // A .glb written by the AI Builder (in the studio or by tools/build-model.mjs) carries its code, title
     // and teaching callouts on the root node, so importing it restores them
+    // The model root carrying AI Builder metadata: the file's top node for a fresh build, or deeper inside
+    // the studio's wrappers when an AI-built library model was exported and is imported again
+    function builderInfoNode(root) {
+      let found = null;
+      root.traverse((node) => {
+        if (!found && node.userData.aiBuilder && typeof node.userData.aiBuilder.code === 'string') found = node;
+      });
+      return found;
+    }
+
     function embeddedBuilderInfo(gltfScene) {
-      const info = gltfScene.children.length === 1 && gltfScene.children[0].userData.aiBuilder;
-      if (!info || typeof info.code !== 'string') return null;
+      const node = builderInfoNode(gltfScene);
+      if (!node) return null;
+      const info = node.userData.aiBuilder;
       const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');
       return {
         code: info.code,
@@ -5807,7 +5926,8 @@
             ? { pbr: this.el('i3d-pbr').checked, polycount: Number(this.el('i3d-poly').value) }
             : { textureResolution: Number(this.el('i3d-texres').value) };
         this.showError('');
-        this.job = { id: null, provider, name, image, cancelled: false };
+        const job = { id: null, provider, name, image, cancelled: false };
+        this.job = job;
         this.setRunning(true);
         this.updateProgress('Uploading photo…', 0);
         try {
@@ -5818,10 +5938,14 @@
           });
           const body = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(body.error || `The studio server returned ${res.status}`);
-          this.job.id = body.jobId;
-          this.pollJob(this.job);
+          job.id = body.jobId;
+          if (job.cancelled) {
+            fetch(`api/image-to-3d/${job.id}`, { method: 'DELETE', headers: { 'X-Studio-Client': '1' } }).catch(() => {});
+            return;
+          }
+          this.pollJob(job);
         } catch (err) {
-          this.finishJob(this.job, err.message === 'Failed to fetch' ? 'Could not reach the studio server. Is studio-server.mjs still running?' : err.message);
+          this.finishJob(job, err.message === 'Failed to fetch' ? 'Could not reach the studio server. Is studio-server.mjs still running?' : err.message);
         }
       },
 
@@ -5897,6 +6021,11 @@
           const body = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(body.error || `The studio server returned ${res.status}`);
           job.id = body.jobId;
+          // Cancelled while the request was in flight: stop the server job too, it is already running
+          if (job.cancelled) {
+            fetch(`api/ai-builder/${job.id}`, { method: 'DELETE', headers: { 'X-Studio-Client': '1' } }).catch(() => {});
+            return;
+          }
           this.pollBuild(job);
         } catch (err) {
           this.finishJob(job, err.message === 'Failed to fetch' ? 'Could not reach the studio server. Is studio-server.mjs still running?' : err.message);
@@ -5960,7 +6089,13 @@
           try {
             this.updateProgress(`Rendering version ${sub.round}…`, this.buildProgress(state, 0.8));
             const template = buildStudioTemplate(await parseGLB(result.glb.slice(0)), { fileBase: job.name });
-            const views = captureModelViews(template);
+            let views;
+            try {
+              views = captureModelViews(template);
+            } finally {
+              // The library parses its own copy of the final version, so this one can go
+              disposeModel(template);
+            }
             job.builds.set(sub.round, { glb: result.glb, views });
             report = {
               round: sub.round,
@@ -6029,7 +6164,7 @@
             }
           });
           this.finishJob(job, null);
-          showToast(`${job.name}.glb built by the AI Builder and added to your library`, 4500);
+          showToast(state.notice ? `${job.name}.glb added to your library. ${state.notice}` : `${job.name}.glb built by the AI Builder and added to your library`, state.notice ? 9000 : 4500);
         } catch (err) {
           this.finishJob(job, `The model was built but could not be added to the library: ${err.message}`);
         }
@@ -6265,9 +6400,11 @@
     // exports it with the same exporter setup as the studio's Export button
     function sandboxWorkerHarness() {
       const loadScript = self.importScripts.bind(self);
+      // Only the harness may report: generated code must not be able to post a result of its own
+      const send = self.postMessage.bind(self);
       // The CSP already blocks the network; removing the APIs as well makes attempts fail loudly and keeps
       // the worker inert in browsers that apply CSP to workers differently
-      ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'importScripts', 'FontFace', 'WebTransport', 'Worker', 'SharedWorker', 'BroadcastChannel', 'indexedDB', 'caches'].forEach((name) => {
+      ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'importScripts', 'FontFace', 'WebTransport', 'Worker', 'SharedWorker', 'BroadcastChannel', 'indexedDB', 'caches', 'postMessage', 'MessageChannel'].forEach((name) => {
         for (let scope = self; scope; scope = Object.getPrototypeOf(scope)) {
           if (!Object.prototype.hasOwnProperty.call(scope, name)) continue;
           try {
@@ -6447,9 +6584,9 @@
           root.userData.aiBuilder = { ...info, code };
           const glb = await exportGLB(root);
           if (glb.byteLength > 150 * 1024 * 1024) throw new Error(`The exported .glb is ${Math.round(glb.byteLength / 1048576)} MB; keep models under 150 MB`);
-          postMessage({ ok: true, glb, stats, info, logs, buildMs }, [glb]);
+          send({ ok: true, glb, stats, info, logs, buildMs }, [glb]);
         } catch (err) {
-          postMessage({ ok: false, error: describeError(err, codeUrl, code), logs });
+          send({ ok: false, error: describeError(err, codeUrl, code), logs });
         }
       };
     }
@@ -6557,36 +6694,42 @@
     // Fixed studio views shown to Claude after every version. Directions point from the model to the
     // camera: +Z is the object's front, +X its right side, +Y up. The last view applies every explode
     // offset at full strength, like the studio's exploded-view slider at 100%.
+    // The axis views are orthographic elevations (no perspective, so long parts keep their proportions
+    // end-on); the three-quarter and exploded views use a perspective lens like a product photo.
     const BUILD_VIEWS = [
       { key: 'front-right', label: 'front-right three-quarter view, from above', dir: [1, 0.62, 1.25] },
-      { key: 'front', label: 'front view (looking at the +Z face)', dir: [0, 0.06, 1] },
-      { key: 'right', label: 'right side view (looking at the +X face)', dir: [1, 0.06, 0] },
-      { key: 'top', label: 'top view (looking down at the +Y face, front at the bottom)', dir: [0, 1, 0], up: [0, 0, -1] },
+      { key: 'front', label: 'front view (orthographic, looking at the +Z face)', dir: [0, 0, 1], ortho: true },
+      { key: 'right', label: 'right side view (orthographic, looking at the +X face)', dir: [1, 0, 0], ortho: true },
+      { key: 'top', label: 'top view (orthographic, looking down at the +Y face, front at the bottom)', dir: [0, 1, 0], up: [0, 0, -1], ortho: true },
       { key: 'rear-left', label: 'rear-left three-quarter view, from above', dir: [-1, 0.55, -1.2] },
       { key: 'exploded', label: 'exploded view, front-right (every explode offset at 100%)', dir: [1, 0.62, 1.25], exploded: true }
     ];
-    const BOTTOM_VIEW = { key: 'bottom', label: 'bottom view (looking up at the -Y face, front at the top)', dir: [0, -1, 0], up: [0, 0, 1] };
+    const BOTTOM_VIEW = { key: 'bottom', label: 'bottom view (orthographic, looking up at the -Y face, front at the top)', dir: [0, -1, 0], up: [0, 0, 1], ortho: true };
 
-    // Camera distance at which all eight corners of `box` fit the square frame when looking at `centre`
-    // from direction `dir`: tighter than the bounding sphere, so long or flat objects fill the view
-    function frameDistance(box, centre, dir, up, fovDeg, margin = 0.9) {
+    // The eight corners of `box` relative to `centre` in a camera basis looking along -dir
+    function boxInView(box, centre, dir, up) {
       const forward = dir.clone().negate();
       const right = new THREE.Vector3().crossVectors(forward, up).normalize();
       const camUp = new THREE.Vector3().crossVectors(right, forward).normalize();
-      const tan = Math.tan(THREE.MathUtils.degToRad(fovDeg / 2)) * margin;
-      const size = box.getSize(new THREE.Vector3()).length();
+      const corners = [];
       const q = new THREE.Vector3();
-      let distance = 0;
       [box.min.x, box.max.x].forEach((x) =>
         [box.min.y, box.max.y].forEach((y) =>
           [box.min.z, box.max.z].forEach((z) => {
             q.set(x, y, z).sub(centre);
-            const depth = q.dot(forward);
-            distance = Math.max(distance, Math.abs(q.dot(right)) / tan - depth, Math.abs(q.dot(camUp)) / tan - depth, size * 0.05 - depth);
+            corners.push({ x: q.dot(right), y: q.dot(camUp), depth: q.dot(forward) });
           })
         )
       );
-      return distance;
+      return corners;
+    }
+
+    // Camera distance at which every corner of `box` fits the square frame: tighter than the bounding
+    // sphere, so long or flat objects fill the view
+    function frameDistance(box, centre, dir, up, fovDeg, margin = 0.9) {
+      const tan = Math.tan(THREE.MathUtils.degToRad(fovDeg / 2)) * margin;
+      const size = box.getSize(new THREE.Vector3()).length();
+      return Math.max(0, ...boxInView(box, centre, dir, up).map((c) => Math.max(Math.abs(c.x) / tan - c.depth, Math.abs(c.y) / tan - c.depth, size * 0.05 - c.depth)));
     }
 
     // Render a model on its own in the bright photo studio from each view, synchronously, then put the
@@ -6594,8 +6737,15 @@
     // keeps perspective close to a product photo while the model still fills the frame.
     function captureModelViews(object, size = 640, { bottom = false } = {}) {
       const views = bottom ? [...BUILD_VIEWS, BOTTOM_VIEW] : BUILD_VIEWS;
+      const shadowCam = keyLight.shadow.camera;
       const saved = {
         fov: camera.fov,
+        light: keyLight.position.clone(),
+        lightTarget: keyLight.target.position.clone(),
+        normalBias: keyLight.shadow.normalBias,
+        frustum: [shadowCam.left, shadowCam.right, shadowCam.top, shadowCam.bottom, shadowCam.near, shadowCam.far],
+        floorY: shadowFloor.position.y,
+        gridY: gridHelper.position.y,
         modelVisible: currentModelGroup ? currentModelGroup.visible : false,
         background: scene.background,
         environment: scene.environment,
@@ -6631,16 +6781,35 @@
         camera.fov = 24;
         camera.updateProjectionMatrix();
 
+        const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 100);
         views.forEach((view) => {
           if (view.exploded) setExploded(true);
           const box = new THREE.Box3().setFromObject(object);
           const centre = box.getCenter(new THREE.Vector3());
           const dir = new THREE.Vector3(...view.dir).normalize();
           const up = new THREE.Vector3(...(view.up || [0, 1, 0]));
-          camera.up.copy(up);
-          camera.position.copy(centre).addScaledVector(dir, frameDistance(box, centre, dir, up, camera.fov));
-          camera.lookAt(centre);
-          renderer.render(scene, camera);
+          let shotCamera = camera;
+          if (view.ortho) {
+            const corners = boxInView(box, centre, dir, up);
+            const half = Math.max(...corners.map((c) => Math.max(Math.abs(c.x), Math.abs(c.y)))) / 0.9;
+            const depth = Math.max(...corners.map((c) => Math.abs(c.depth)));
+            ortho.left = -half;
+            ortho.right = half;
+            ortho.top = half;
+            ortho.bottom = -half;
+            ortho.near = 0.01;
+            ortho.far = depth * 4 + 1;
+            ortho.updateProjectionMatrix();
+            ortho.up.copy(up);
+            ortho.position.copy(centre).addScaledVector(dir, depth * 2 + 0.5);
+            ortho.lookAt(centre);
+            shotCamera = ortho;
+          } else {
+            camera.up.copy(up);
+            camera.position.copy(centre).addScaledVector(dir, frameDistance(box, centre, dir, up, camera.fov));
+            camera.lookAt(centre);
+          }
+          renderer.render(scene, shotCamera);
           shots.push({ key: view.key, label: view.label, dataUrl: renderer.domElement.toDataURL('image/jpeg', 0.86) });
           if (view.exploded) setExploded(false);
         });
@@ -6659,13 +6828,32 @@
         scene.environment = saved.environment;
         gridHelper.visible = saved.grid;
         shadowFloor.material.opacity = saved.floorOpacity;
-        if (currentModelGroup) {
-          currentModelGroup.visible = saved.modelVisible;
-          fitStudioToModel(currentModelGroup);
-        }
+        // Put the key light, its shadow frustum, the floor and the grid back exactly: refitting them would
+        // follow the current model's present pose (exploded, turned), not the one the studio fitted
+        keyLight.position.copy(saved.light);
+        keyLight.target.position.copy(saved.lightTarget);
+        keyLight.shadow.normalBias = saved.normalBias;
+        [shadowCam.left, shadowCam.right, shadowCam.top, shadowCam.bottom, shadowCam.near, shadowCam.far] = saved.frustum;
+        shadowCam.updateProjectionMatrix();
+        shadowFloor.position.y = saved.floorY;
+        gridHelper.position.y = saved.gridY;
+        if (currentModelGroup) currentModelGroup.visible = saved.modelVisible;
         renderer.render(scene, camera);
       }
       return shots;
+    }
+
+    // Free a model's GPU buffers and textures once nothing will render it again
+    function disposeModel(root) {
+      root.traverse((node) => {
+        if (!node.isMesh) return;
+        if (node.geometry) node.geometry.dispose();
+        (Array.isArray(node.material) ? node.material : [node.material]).forEach((material) => {
+          if (!material) return;
+          Object.values(material).forEach((value) => value && value.isTexture && value.dispose());
+          material.dispose();
+        });
+      });
     }
 
     function thumbnailFromDataUrl(dataUrl, size = 160) {

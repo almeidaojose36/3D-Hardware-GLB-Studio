@@ -20,7 +20,8 @@ is the same loop the studio's API-based AI Builder runs, done here in Claude Cod
   rotor) as examples of the expected detail.
 - Look at every reference photo the user gave (read the image files). If you cannot tell what the
   object is, or the photos leave its size unclear, ask one short question; otherwise proceed.
-- Check `node_modules/playwright-core` exists; if not, run `npm install` once.
+- Check `node --version` is 20 or newer (the build tool needs it) and that `node_modules/playwright-core`
+  exists; if not, run `npm install` once.
 
 ## 2. Write the model
 

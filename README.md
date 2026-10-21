@@ -15,7 +15,7 @@ training callouts, and exports each one as a `.glb` file. You can add your own m
 **Built-in models and importing only:** open `3d_hardware_glb_studio_procedural_builder.html` in a browser.
 
 **With the AI generators:** they run through a small local server, which keeps your API keys private
-(the providers also refuse direct requests from web pages). It needs [Node.js](https://nodejs.org) 18
+(the providers also refuse direct requests from web pages). It needs [Node.js](https://nodejs.org) 20
 or newer.
 
 1. In this folder run `npm install` once (needed for the AI Builder and `tools/build-model.mjs`; the
@@ -40,8 +40,9 @@ usage. Start Claude Code in this folder, from the Claude desktop app or a termin
    *"Build a 3D model of this car engine from these photos."* Claude Code uses the project's
    `build-3d-model` skill.
 3. Claude writes `models/<Name>/model.js` and builds it with `node tools/build-model.mjs`. The tool
-   writes `models/<Name>/<Name>.glb` and five studio views to `models/<Name>/views/`. Claude looks at
-   the views, compares them with your photos and revises the code, usually for 2-4 rounds.
+   writes `models/<Name>/<Name>.glb` and, in `models/<Name>/views/`, six studio views (five angles plus
+   an exploded view) and a contact sheet of them. Claude looks at the views, compares them with your
+   photos and revises the code, usually for 2-4 rounds.
 4. In the studio, choose **Image → 3D → Import .glb file** and pick the `.glb`. The title, teaching
    callouts and code come with it (see **Editable Source**).
 

@@ -3,9 +3,9 @@
 // Classroom 3D Hardware GLB Studio: local server
 // ============================================================================
 // Serves the studio page and brokers requests to AI services, so API keys stay on this machine and
-// never reach the browser (the providers also refuse direct browser calls). Requires Node 18+ for the
-// built-in fetch / FormData / Blob. The image-to-3D generators need no npm install; the AI Builder
-// needs the Anthropic SDK (run npm install once).
+// never reach the browser (the providers also refuse direct browser calls). Requires Node 20+ (it uses
+// the built-in fetch / FormData / Blob, and the Anthropic SDK needs 20). The image-to-3D generators need
+// no npm install; the AI Builder needs the Anthropic SDK (run npm install once).
 //
 //   node studio-server.mjs        then open http://localhost:8787
 //
@@ -391,18 +391,35 @@ function syntaxProblem(code) {
   }
 }
 
-function addUsage(job, message) {
-  const u = message.usage || {};
-  job.usage.input += u.input_tokens || 0;
-  job.usage.output += u.output_tokens || 0;
-  job.usage.cacheRead += u.cache_read_input_tokens || 0;
-  const split = u.cache_creation || {};
-  if (Number.isFinite(split.ephemeral_1h_input_tokens) || Number.isFinite(split.ephemeral_5m_input_tokens)) {
-    job.usage.cacheWrite1h += split.ephemeral_1h_input_tokens || 0;
-    job.usage.cacheWrite5m += split.ephemeral_5m_input_tokens || 0;
-  } else {
-    job.usage.cacheWrite1h += u.cache_creation_input_tokens || 0;
+// With server-side fallbacks, usage.iterations lists every billed attempt (a declined attempt is billed
+// too); the top-level figures then cover only the attempt that produced the reply
+function addUsage(job, usage) {
+  if (!usage) return;
+  const entries = Array.isArray(usage.iterations) && usage.iterations.length ? usage.iterations : [usage];
+  for (const u of entries) {
+    job.usage.input += u.input_tokens || 0;
+    job.usage.output += u.output_tokens || 0;
+    job.usage.cacheRead += u.cache_read_input_tokens || 0;
+    const split = u.cache_creation || {};
+    if (Number.isFinite(split.ephemeral_1h_input_tokens) || Number.isFinite(split.ephemeral_5m_input_tokens)) {
+      job.usage.cacheWrite1h += split.ephemeral_1h_input_tokens || 0;
+      job.usage.cacheWrite5m += split.ephemeral_5m_input_tokens || 0;
+    } else {
+      job.usage.cacheWrite1h += u.cache_creation_input_tokens || 0;
+    }
   }
+}
+
+// Which failed turns are worth sending again unchanged (the history only grows after a turn succeeds)
+function retryReason(err) {
+  if (err instanceof Anthropic.APIUserAbortError) return null;
+  if (err instanceof Anthropic.APIConnectionError) return 'connection lost';
+  if (err instanceof Anthropic.APIError) {
+    // An error event in the middle of a stream (overloaded, internal) has no HTTP status
+    return err.status === undefined || err.status === 429 || err.status >= 500 ? 'temporary API error' : null;
+  }
+  // Otherwise the SDK could not parse a streamed tool input (eager input streaming) or the stream broke off
+  return 'incomplete response';
 }
 
 function costUsd(job) {
@@ -434,19 +451,21 @@ async function runBuilderTurn(job) {
   job.message = job.round === 0 ? 'Claude is studying your photos…' : 'Claude is revising the model…';
 
   let message;
-  for (let jsonRetries = 0; ; jsonRetries++) {
+  for (let attempt = 0; ; attempt++) {
     try {
       message = await streamTurn(job);
       break;
     } catch (err) {
-      // With eager input streaming the SDK raises a plain error for tool input it cannot parse at all;
-      // re-issue that turn (the history is unchanged). API errors are real and go to the caller.
-      if (job.cancelled || err instanceof Anthropic.APIError || jsonRetries >= 2) throw err;
-      log(job, `unparseable tool input, re-issuing the turn (${err.message})`);
+      if (job.cancelled) return;
+      const reason = retryReason(err);
+      if (!reason || attempt >= 3) throw err;
+      log(job, `${reason}, re-issuing the turn (${err.message})`);
+      await sleep(2000 * 2 ** attempt);
+      if (job.cancelled) return;
     }
   }
   if (job.cancelled) return;
-  addUsage(job, message);
+  addUsage(job, message.usage);
   const u = message.usage || {};
   log(job, `turn done: ${message.stop_reason}, out ${u.output_tokens} tok, in ${u.input_tokens} + cache ${u.cache_read_input_tokens || 0} read / ${u.cache_creation_input_tokens || 0} written`);
 
@@ -463,7 +482,8 @@ async function runBuilderTurn(job) {
     return runBuilderTurn(job);
   }
 
-  job.messages.push({ role: 'assistant', content: message.content });
+  // An empty reply cannot stay in the history (the API rejects empty non-final messages)
+  if (message.content.length) job.messages.push({ role: 'assistant', content: message.content });
   if (!calls.length) {
     if (job.nudges++ >= 2) throw new Error('Claude stopped without submitting a model.');
     job.messages.push({
@@ -536,15 +556,22 @@ async function streamTurn(job) {
     },
     { signal: job.abort.signal }
   );
-  for await (const event of stream) {
-    if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
-      job.message = event.content_block.name === 'submit_model' ? `Claude is writing version ${job.round + 1}…` : 'Claude is choosing the final version…';
-    } else if (event.type === 'content_block_delta') {
-      if (event.delta.type === 'thinking_delta') job.live.thinking = (job.live.thinking + event.delta.thinking).slice(-600);
-      else if (event.delta.type === 'input_json_delta') job.live.codeChars += event.delta.partial_json.length;
+  try {
+    for await (const event of stream) {
+      if (event.type === 'content_block_start' && event.content_block.type === 'tool_use') {
+        job.message = event.content_block.name === 'submit_model' ? `Claude is writing version ${job.round + 1}…` : 'Claude is choosing the final version…';
+      } else if (event.type === 'content_block_delta') {
+        if (event.delta.type === 'thinking_delta') job.live.thinking = (job.live.thinking + event.delta.thinking).slice(-600);
+        else if (event.delta.type === 'input_json_delta') job.live.codeChars += event.delta.partial_json.length;
+      }
     }
+    return await stream.finalMessage();
+  } catch (err) {
+    // A failed attempt is still billed for what it produced
+    const partial = stream.currentMessage;
+    if (partial) addUsage(job, partial.usage);
+    throw err;
   }
-  return stream.finalMessage();
 }
 
 // Browser report for the pending version: stats and studio views, or the build error
@@ -587,7 +614,7 @@ function acceptRender(job, report) {
       `\n\nFix the problem and call submit_model with the complete corrected code. (${remainingAttempts(job)} attempt(s) left)`;
   }
   job.messages.push({ role: 'user', content: [...sub.extraResults, { type: 'tool_result', tool_use_id: sub.toolUseId, is_error: isError, content }] });
-  runBuilderTurn(job).catch((err) => failJob(job, err));
+  runBuilderTurn(job).catch((err) => endWithError(job, err));
 }
 
 function describeRender(sub, report, views, remaining) {
@@ -595,6 +622,7 @@ function describeRender(sub, report, views, remaining) {
   const n = (v) => (Number.isFinite(Number(v)) ? Number(v) : '?');
   const vec = (v) => (Array.isArray(v) ? v.map(n).join(', ') : '?');
   const parts = (Array.isArray(s.parts) ? s.parts : [])
+    .filter((p) => p && typeof p === 'object')
     .slice(0, 30)
     .map((p) => `${clip(p.name, 60)} (${n(p.meshes)} meshes${Array.isArray(p.explode) ? `, explodes by ${vec(p.explode)}` : ', no explode offset'})`);
   const warnings = (Array.isArray(s.warnings) ? s.warnings : []).slice(0, 12).map((w) => clip(w, 200));
@@ -635,6 +663,17 @@ function finishOrFail(job, reason) {
   }
 }
 
+// A turn that cannot continue ends the job, keeping the latest version that built (already paid for)
+function endWithError(job, err) {
+  if (job.cancelled || job.status === 'done' || job.status === 'failed') return;
+  if (!job.good.size) {
+    failJob(job, err);
+    return;
+  }
+  job.notice = `Claude stopped early (${describeApiError(err)}), so the latest version that built was kept.`;
+  finishOrFail(job, 'Stopped early.');
+}
+
 function failJob(job, err) {
   if (job.cancelled || job.status === 'done' || job.status === 'failed') return;
   job.status = 'failed';
@@ -662,6 +701,7 @@ function builderState(job) {
     live: job.status === 'thinking' && job.live ? { thinking: job.live.thinking.slice(-400), codeChars: job.live.codeChars } : null,
     submission: job.status === 'awaiting-render' ? publicSubmission(job.pending) : null,
     result: job.status === 'done' ? publicSubmission(job.final) : null,
+    notice: job.notice || null,
     usage: { input: u.input, output: u.output, cacheRead: u.cacheRead, cacheWrite: u.cacheWrite1h + u.cacheWrite5m },
     costUsd: costUsd(job)
   };
@@ -722,6 +762,7 @@ function createBuilderJob(body) {
     pending: null,
     good: new Map(),
     final: null,
+    notice: null,
     live: null,
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite1h: 0, cacheWrite5m: 0 },
     abort: new AbortController(),
@@ -729,7 +770,7 @@ function createBuilderJob(body) {
   };
   builderJobs.set(job.id, job);
   log(job, `started (${images.length} photo(s), up to ${maxRounds} version(s), ${BUILDER.model} at ${BUILDER.effort} effort)`);
-  runBuilderTurn(job).catch((err) => failJob(job, err));
+  runBuilderTurn(job).catch((err) => endWithError(job, err));
   return job;
 }
 
@@ -745,8 +786,9 @@ setInterval(() => {
   for (const job of builderJobs.values()) {
     const active = job.status === 'thinking' || job.status === 'awaiting-render';
     if (active && now - job.lastSeen > BUILDER.abandonAfterMs) cancelBuilderJob(job, 'abandoned: the studio tab stopped checking on it');
-    else if (job.status === 'awaiting-render' && now > job.renderDeadline) failJob(job, new Error('The studio tab did not report the render in time.'));
-    else if (now - job.createdAt > JOB_TTL_MS) builderJobs.delete(job.id);
+    else if (job.status === 'awaiting-render' && now > job.renderDeadline) endWithError(job, new Error('The studio tab did not report the render in time.'));
+    // Finished jobs stay readable for an hour after the tab last asked about them
+    else if (!active && now - job.lastSeen > JOB_TTL_MS) builderJobs.delete(job.id);
   }
 }, 30 * 1000).unref();
 
