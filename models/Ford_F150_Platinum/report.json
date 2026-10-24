@@ -1,0 +1,147 @@
+{
+  "model": "Ford_F150_Platinum",
+  "glb": "/home/user/3D-Hardware-GLB-Studio/models/Ford_F150_Platinum/Ford_F150_Platinum.glb",
+  "buildMs": 1908,
+  "stats": {
+    "meshes": 343,
+    "triangles": 214156,
+    "materials": 33,
+    "textures": 13,
+    "size": [
+      0.691,
+      0.705,
+      1.648
+    ],
+    "centre": [
+      0,
+      0.08,
+      -0.008
+    ],
+    "parts": [
+      {
+        "name": "Chassis_Frame",
+        "meshes": 17,
+        "explode": [
+          0,
+          0,
+          0
+        ],
+        "nestedExplode": 0
+      },
+      {
+        "name": "Wheels",
+        "meshes": 116,
+        "explode": [
+          0,
+          0,
+          0
+        ],
+        "nestedExplode": 4
+      },
+      {
+        "name": "Front_Clip",
+        "meshes": 53,
+        "explode": [
+          0,
+          0.3,
+          0.16
+        ],
+        "nestedExplode": 1
+      },
+      {
+        "name": "Cab_Body",
+        "meshes": 59,
+        "explode": [
+          0,
+          0.3,
+          0
+        ],
+        "nestedExplode": 1
+      },
+      {
+        "name": "Interior",
+        "meshes": 42,
+        "explode": [
+          0,
+          0.12,
+          0
+        ],
+        "nestedExplode": 0
+      },
+      {
+        "name": "Cargo_Bed",
+        "meshes": 47,
+        "explode": [
+          0,
+          0.28,
+          -0.28
+        ],
+        "nestedExplode": 1
+      },
+      {
+        "name": "Rear_Bumper",
+        "meshes": 9,
+        "explode": [
+          0,
+          0,
+          -0.35
+        ],
+        "nestedExplode": 0
+      }
+    ],
+    "warnings": []
+  },
+  "info": {
+    "title": "Ford F-150 Platinum SuperCrew",
+    "subtitle": "Full-size pickup: crew cab, 5.5 ft bed, LED lighting, 22\" polished wheels & ladder frame",
+    "summary": "The F-150 is a body-on-frame pickup: a steel ladder frame carries the axles and drivetrain, while the cab and the cargo bed are separate bodies bolted on top. The Platinum trim adds chrome and gunmetal detailing, LED lighting and 22-inch wheels.",
+    "callouts": [
+      {
+        "pos": [
+          0,
+          0.017672047578589634,
+          0.8088360237892949
+        ],
+        "tag": "Grille & LED Headlamps",
+        "desc": "Gunmetal bar grille feeds cooling air to the radiator; the C-shaped LED signature frames each headlamp."
+      },
+      {
+        "pos": [
+          0.2751401869158879,
+          -0.1576890399320306,
+          0.5437553101104503
+        ],
+        "tag": "22\" Wheel & Disc Brake",
+        "desc": "Polished 22-inch alloy wheel on a 275/50R22 tyre, with a vented brake rotor and caliper behind the spokes."
+      },
+      {
+        "pos": [
+          0,
+          0.10875106202209006,
+          -0.5165675446049278
+        ],
+        "tag": "5.5 ft Cargo Bed",
+        "desc": "A separate steel-and-aluminium box bolted to the frame; it can be lifted off without touching the cab."
+      },
+      {
+        "pos": [
+          0,
+          0.02854715378079864,
+          -0.7748513169073916
+        ],
+        "tag": "Platinum Tailgate",
+        "desc": "Drops down to load the bed; the dark applique with trim lettering and the C-shaped LED taillamps mark the Platinum trim."
+      },
+      {
+        "pos": [
+          0.2735089209855565,
+          -0.12914188615123195,
+          0.10875106202209006
+        ],
+        "tag": "Ladder Frame (underneath)",
+        "desc": "Two boxed steel rails joined by crossmembers carry the engine, axles and both bodies: the \"body-on-frame\" layout of full-size trucks."
+      }
+    ]
+  },
+  "logs": []
+}
