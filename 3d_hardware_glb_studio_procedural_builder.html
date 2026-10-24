@@ -102,13 +102,128 @@
       border: 2px solid #0f172a;
       box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
     }
+
+    #i3d-drop { background:#101719; border-color:#b9edce30; border-radius:14px; }
+    #i3d-drop:hover { background:#b9edce08; border-color:#b9edce80; }
+    #i3d-drop svg { color:#b9edce; }
+    #i3d-generate { background:#b9edce; color:#163124; box-shadow:none; }
+    #i3d-server-note { background:#b9edce08; border-color:#b9edce20; color:#b1c5b9; }
+    #i3d-modal [role="tab"][aria-selected="true"] { background:#b9edce12; border-color:#b9edce30; color:#d4f4e1; }
+    .secondary-source { width:100%; padding:10px; font-size:11px; color:#a8beb1; }
+    #inspector-panel #mat-editor-name { max-width:145px; font-size:10px; }
+    #hierarchy-tree > div { background:#ffffff02; border-color:#ffffff08; padding:10px; }
+    #hierarchy-tree > div > div:last-child > span { display:none; }
+    #hierarchy-tree .mono { font-family:Inter,sans-serif; font-size:11px; }
+    /* Studio shell: calm surfaces, clear actions, and an unobstructed canvas. */
+    :root { color-scheme: dark; --surface: #121619; --line: #ffffff10; --accent: #b9edce; }
+    body { background:#0c0f11; font-size:13px; }
+    button, input, select { outline-offset:4px; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--accent); }
+    input, textarea, pre { user-select:text; }
+    #studio-header { height:76px; padding:0 24px; background:#121619; border-color:var(--line); gap:20px; }
+    #studio-header h1 { font-size:18px; letter-spacing:-.6px; white-space:nowrap; }
+    #studio-header h1 + span { display:none; }
+    #studio-header p { font-size:11px; color:#7e8a91; margin-top:3px; }
+    #studio-header > div:first-child > div:first-child { background:#b9edce; color:#182d23; box-shadow:none; width:36px; height:36px; border-radius:11px; }
+    #studio-header > div:first-child svg { color:#182d23; }
+    #studio-header button { white-space:nowrap; height:38px; border-radius:8px; padding:0 14px; box-shadow:none; font-size:12px; }
+    #btn-image-to-3d { background:#b9edce; color:#183125; }
+    #btn-image-to-3d:hover { background:#d0f7df; }
+    #btn-export-current-glb { background:#232b2e; border:1px solid #3a4549; color:#e4e9e7; }
+    #btn-source-modal { background:transparent; border-color:transparent; }
+    #studio-workspace { flex-direction:row; min-height:0; }
+    #model-panel { width:248px; max-height:none; background:var(--surface); border-right:1px solid var(--line); border-bottom:0; }
+    #model-panel > div:first-child { padding:23px 18px 13px; border:0; }
+    #model-panel > div:first-child > span { text-transform:none; letter-spacing:0; font-size:13px; color:#edf2ef; }
+    #btn-view-all-grid { background:transparent; color:#91a29a; border:0; font-size:11px; }
+    .model-search { padding:0 14px 16px; }
+    #model-search { width:100%; border:1px solid #ffffff12; border-radius:8px; background:#0c1012; padding:10px 12px; font-size:12px; }
+    #asset-list { flex-direction:column; overflow-y:auto; overflow-x:hidden; padding:0 10px 16px; gap:5px; }
+    #asset-list > button { width:100%; min-height:74px; border-color:transparent; border-radius:9px; background:transparent; box-shadow:none; padding:12px 9px; gap:10px; }
+    #asset-list > button:hover { background:#ffffff06; }
+    #asset-list > button[aria-pressed="true"] { background:#b9edce0d; border-color:#b9edce26; }
+    .asset-icon { width:34px; height:38px; border:1px solid #ffffff0b; border-radius:8px; display:grid; place-items:center; font-size:24px; color:#8d9c94; background:#ffffff03; flex-shrink:0; }
+    [aria-pressed="true"] .asset-icon { color:var(--accent); }
+    .asset-copy { flex:1; min-width:0; }
+    .asset-copy > div:first-child { font-size:12px; font-weight:500; }
+    .asset-copy > div:nth-child(2) { font-size:10px; color:#79888b; margin-top:5px; }
+    .asset-copy > div:nth-child(3), #asset-list > button > [data-quick-dl] { display:none; }
+    #asset-list > button:last-child { border:1px dashed #b9edce35; margin-top:14px; color:#b9edce; }
+    .search-empty { padding:16px 8px; color:#84938c; font-size:12px; }
+    #studio-main { min-width:0; }
+    #view-toolbar { display:flex; flex-wrap:wrap; align-items:center; padding:12px 20px; gap:6px; background:#151a1d; border-bottom:1px solid var(--line); flex-shrink:0; }
+    #view-toolbar button { background:transparent; border:1px solid transparent; box-shadow:none; padding:7px 9px; color:#9daaa7; font-size:11px; border-radius:6px; }
+    #view-toolbar button:hover { background:#ffffff08; color:white; }
+    #view-toolbar #btn-reset-camera { margin-left:auto; }
+    #view-toolbar #btn-inspector { border-color:#ffffff17; color:#d7e4dc; }
+    #viewport-container { min-height:0; background:radial-gradient(ellipse at 50% 45%,#293332 0%,#171f21 55%,#101719 100%); }
+    #model-hud { top:25px; left:26px; right:24px; max-width:none; }
+    #model-hud > div:first-child { background:transparent; border:0; box-shadow:none; padding:0; backdrop-filter:none; }
+    #hud-model-title { font-family:Inter,sans-serif; font-size:20px; font-weight:500; letter-spacing:-.6px; }
+    #hud-model-badge { display:none; }
+    #hud-model-desc { max-width:440px; color:#8c9c9d; font-size:11px; line-height:1.7; margin-top:6px; }
+    #model-hud > div:first-child > div:last-child { border:0; margin-top:9px; padding:0; font-size:9px; opacity:.65; gap:16px; }
+    #model-hud .text-sky-400 { color:#b9cebf; }
+    #hud-selected-pill { display:none; }
+    #scene-sliders { bottom:45px; max-width:510px; padding:16px 18px; background:#151d20ed; border-color:#ffffff12; box-shadow:0 12px 40px #0003; border-radius:12px; gap:20px; }
+    #scene-sliders > div:first-child > div { margin-bottom:10px; }
+    #scene-sliders .text-sky-400 { color:var(--accent); }
+    input[type="range"] { height:4px; background:#34423e; }
+    input[type="range"]::-webkit-slider-thumb { background:#b9edce; border:2px solid #172b20; box-shadow:none; width:14px; height:14px; }
+    .viewport-hint { position:absolute; bottom:16px; width:100%; text-align:center; font-size:10px; color:#748584; pointer-events:none; }
+    .viewport-hint span { margin:0 8px; }
+    #inspector-panel { width:280px; max-height:none; background:var(--surface); border-left:1px solid var(--line); border-top:0; }
+    .inspector-heading { display:flex; justify-content:space-between; align-items:center; padding:20px 16px; font-size:14px; font-weight:600; border-bottom:1px solid var(--line); }
+    #btn-close-inspector { color:#91a09a; padding:4px 8px; }
+    #inspector-panel h2 { text-transform:none; letter-spacing:0; color:#d9e4de; font-size:12px; }
+    #inspector-panel > .p-3 { padding:18px 16px 12px; border:0; }
+    #hierarchy-tree { max-height:220px; padding:0 12px 16px; }
+    #inspector-panel > .p-3\.5 { padding:20px 16px; gap:20px; }
+    #pbr-controls > div { margin-bottom:20px; }
+    #inspector-panel .text-sky-400 { color:#b9d6c5; }
+    #hud-lesson-card { margin:12px; background:#b9edce08; border-color:#b9edce20; box-shadow:none; }
+    #hud-lesson-card > div { flex-wrap:wrap; }
+    #btn-export-all-glb { background:#232b2e; color:#c3d2ca; width:100%; margin-top:10px; box-shadow:none; }
+    #source-modal > div, #i3d-modal > div { background:#141b1e; border-color:#ffffff18; }
+    @media(min-width:1200px) { #btn-inspector, #btn-close-inspector { display:none; } }
+    @media(max-width:1199px) {
+      #inspector-panel { display:none; position:absolute; right:0; top:0; bottom:0; width:300px; z-index:40; box-shadow:-20px 0 60px #0006; }
+      .inspector-open #inspector-panel { display:flex; }
+      #model-panel { width:210px; }
+      #studio-header { padding:0 18px; }
+      #view-toolbar { padding:10px 12px; gap:2px; }
+      #view-toolbar button { padding:7px 6px; font-size:10px; }
+      #btn-source-modal { display:none; }
+      #scene-sliders { flex-direction:row; gap:14px; }
+      #scene-sliders > div:last-child { width:115px; border-top:0; padding-top:0; }
+    }
+    @media(max-width:600px) {
+      #studio-header { height:65px; padding:0 12px; gap:8px; }
+      #studio-header h1 { font-size:15px; }
+      #studio-header p, #studio-header > div:first-child > div:first-child { display:none; }
+      #studio-header button { padding:0 9px; font-size:10px; height:34px; }
+      #studio-workspace { flex-direction:column; }
+      #model-panel { width:100%; max-height:152px; border-right:0; border-bottom:1px solid var(--line); }
+      #model-panel > div:first-child { padding:10px 12px; }
+      .model-search { position:absolute; right:66px; top:6px; width:160px; padding:0; }
+      #model-search { padding:6px 10px; font-size:11px; }
+      #asset-list { flex-direction:row; padding:4px 10px 10px; overflow-x:auto; }
+      #asset-list > button { width:190px; min-height:65px; padding:8px; }
+      #asset-list > button:last-child { margin-top:0; }
+      #model-hud { top:18px; left:18px; }
+      #hud-model-title { font-size:17px; }
+      #hud-model-desc { max-width:300px; font-size:10px; }
+      #scene-sliders { padding:12px; bottom:37px; }
+      .viewport-hint { font-size:9px; bottom:12px; }
+      #scene-sliders .text-xs { font-size:10px; }
+    }
   </style>
 </head>
 
 <body class="h-screen w-screen flex flex-col bg-[#0b0e14] text-slate-100 overflow-hidden">
 
   <!-- Top Navigation & Export Bar -->
-  <header class="h-14 border-b border-slate-800/80 bg-[#0f131c]/95 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-20">
+  <header id="studio-header" class="h-14 border-b border-slate-800/80 bg-[#0f131c]/95 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-20">
     <div class="flex items-center gap-3">
       <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,10 +232,10 @@
       </div>
       <div>
         <div class="flex items-center gap-2">
-          <h1 class="font-semibold text-sm md:text-base tracking-tight text-white">Classroom 3D PC Hardware CAD & GLB Studio</h1>
-          <span class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-full mono">High-Detail CAD PBR</span>
+          <h1 class="font-semibold text-sm md:text-base tracking-tight text-white">Hardware Studio</h1>
+          <span class="px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded-full mono">3D WORKSPACE</span>
         </div>
-        <p class="text-[11px] text-slate-400 hidden sm:block">Filleted CAD geometry, baked normal & roughness/metal PBR maps, printed labels, training callouts & binary .GLB export</p>
+        <p class="text-[11px] text-slate-400 hidden sm:block">Explore. Create. Make it yours.</p>
       </div>
     </div>
 
@@ -130,7 +245,7 @@
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.6-4.6a2 2 0 012.8 0L16 16m-2-2l1.6-1.6a2 2 0 012.8 0L20 14M14 8h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
         </svg>
-        <span>Image <span aria-hidden="true">→</span> 3D</span>
+        <span>Upload image</span>
       </button>
 
       <button id="btn-source-modal" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition flex items-center gap-1.5">
@@ -144,78 +259,37 @@
         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
-        <span>Export <span id="export-btn-filename" class="mono">Case_Fan.glb</span></span>
+        <span>Export GLB <span id="export-btn-filename" class="sr-only">Case_Fan.glb</span></span>
       </button>
 
-      <button id="btn-export-all-glb" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5">
-        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-        <span class="hidden sm:inline">Batch Export All 9 (.GLB)</span>
-        <span class="sm:hidden">All 9</span>
-      </button>
+
     </div>
   </header>
 
   <!-- Main Workspace -->
-  <div class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
+  <div id="studio-workspace" class="flex-1 flex flex-col lg:flex-row overflow-hidden relative">
 
     <!-- Left Sidebar: 9 Hardware Assets Selector -->
-    <aside class="w-full lg:w-72 bg-[#0f131c] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col shrink-0 z-10 max-h-44 lg:max-h-full">
+    <aside id="model-panel" class="w-full lg:w-72 bg-[#0f131c] border-b lg:border-b-0 lg:border-r border-slate-800/80 flex flex-col shrink-0 z-10 max-h-44 lg:max-h-full">
       <div class="p-3 border-b border-slate-800/80 flex items-center justify-between">
-        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">9 Classroom Models</span>
+        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Model library</span>
         <button id="btn-view-all-grid" class="px-2 py-0.5 rounded bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-[11px] font-medium text-indigo-300 transition">
-          9-Up Lab Kit
+          View all
         </button>
       </div>
+      <div class="model-search"><input id="model-search" type="search" placeholder="Search models…" aria-label="Search models" /></div>
       <div id="asset-list" class="flex lg:flex-col overflow-x-auto lg:overflow-y-auto p-2 gap-1.5 flex-1">
         <!-- Populated dynamically via JS -->
       </div>
     </aside>
 
     <!-- Center 3D Viewport -->
-    <main class="flex-1 relative flex flex-col overflow-hidden">
-      <div id="viewport-container" class="flex-1 relative overflow-hidden">
-        <!-- 3D Classroom Callout Pins Overlay Container -->
-        <div id="callout-overlay" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
-
-        <!-- Top-Left Viewport HUD Overlay -->
-        <div class="absolute top-3 left-3 z-20 pointer-events-none flex flex-col gap-1.5 max-w-xs sm:max-w-md">
-          <div class="bg-[#0f131c]/90 backdrop-blur-md border border-slate-800/90 rounded-xl px-3.5 py-2.5 shadow-xl">
-            <div class="flex items-center gap-2">
-              <span id="hud-model-title" class="font-bold text-sm text-white mono">Case_Fan.glb</span>
-              <span id="hud-model-badge" class="px-1.5 py-0.5 text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 rounded mono">CAD Beveled PBR</span>
-            </div>
-            <p id="hud-model-desc" class="text-xs text-slate-300 mt-0.5">120mm Cooling Fan with Swept Airfoil Impeller, Corner Ribs & Keyed 2-Pin Lead</p>
-            <div class="flex items-center gap-4 mt-2 pt-2 border-t border-slate-800/80 text-[11px] mono text-slate-300">
-              <div>Meshes: <span id="hud-mesh-count" class="text-sky-400 font-semibold">0</span></div>
-              <div>Triangles: <span id="hud-tri-count" class="text-sky-400 font-semibold">0</span></div>
-              <div>Vertices: <span id="hud-vert-count" class="text-sky-400 font-semibold">0</span></div>
-            </div>
-          </div>
-
-          <!-- Active Classroom Callout Lesson Card -->
-          <div id="hud-lesson-card" class="bg-indigo-950/90 backdrop-blur-md border border-indigo-500/40 rounded-xl px-3.5 py-2.5 text-xs text-indigo-100 shadow-xl pointer-events-auto">
-            <div class="flex items-center justify-between gap-2 mb-1">
-              <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-300 mono">Classroom Training Note</span>
-              <span id="lesson-part-tag" class="px-1.5 py-0.5 rounded bg-indigo-500/30 text-[10px] mono text-white">Click any numbered pin</span>
-            </div>
-            <p id="lesson-part-desc" class="text-[11px] text-slate-200 leading-relaxed">
-              Use the numbered 3D pins or the Exploded View slider below to inspect internal hardware anatomy, pinouts, and mechanical assembly points.
-            </p>
-          </div>
-
-          <!-- Selected Sub-Mesh Pill -->
-          <div id="hud-selected-pill" class="hidden bg-sky-950/85 backdrop-blur-md border border-sky-500/40 rounded-lg px-3 py-1.5 text-xs text-sky-200 mono shadow-lg">
-            Selected Node: <span id="hud-selected-name" class="font-semibold text-white">None</span>
-          </div>
-        </div>
-
+    <main id="studio-main" class="flex-1 relative flex flex-col overflow-hidden">
         <!-- Top-Right Camera, Classroom Callouts & Studio Backdrop Controls -->
-        <div class="absolute top-3 right-3 z-20 flex flex-wrap items-center justify-end gap-1.5 max-w-md">
+        <div id="view-toolbar" aria-label="View controls">
           <button id="btn-toggle-callouts" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-indigo-500/50 text-xs font-medium text-indigo-200 transition flex items-center gap-1.5 shadow-lg">
-            <span>Training Labels</span>
-            <span id="callouts-badge" class="w-2 h-2 rounded-full bg-indigo-400 shadow-sm shadow-indigo-400"></span>
+            <span>Labels</span>
+            <span id="callouts-badge" class="w-2 h-2 rounded-full bg-slate-600"></span>
           </button>
           <button id="btn-toggle-backdrop" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 text-xs font-medium text-slate-200 transition flex items-center gap-1.5">
             <span id="backdrop-label">White Photo Studio</span>
@@ -233,44 +307,83 @@
             <span id="turntable-badge" class="w-2 h-2 rounded-full bg-slate-600"></span>
           </button>
           <button id="btn-reset-camera" class="px-2.5 py-1.5 rounded-lg bg-[#0f131c]/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700/80 text-xs font-medium text-slate-200 transition">
-            Reset View
+            Reset view
           </button>
+          <button id="btn-inspector" aria-expanded="false" aria-controls="inspector-panel">Inspector <span aria-hidden="true">☷</span></button>
+        </div>
+
+      <div id="viewport-container" class="flex-1 relative overflow-hidden">
+        <!-- 3D Classroom Callout Pins Overlay Container -->
+        <div id="callout-overlay" class="absolute inset-0 pointer-events-none z-10 overflow-hidden"></div>
+
+        <!-- Top-Left Viewport HUD Overlay -->
+        <div id="model-hud" class="absolute top-3 left-3 z-20 pointer-events-none flex flex-col gap-1.5 max-w-xs sm:max-w-md">
+          <div class="bg-[#0f131c]/90 backdrop-blur-md border border-slate-800/90 rounded-xl px-3.5 py-2.5 shadow-xl">
+            <div class="flex items-center gap-2">
+              <span id="hud-model-title" class="font-bold text-sm text-white mono">Case_Fan.glb</span>
+              <span id="hud-model-badge" class="px-1.5 py-0.5 text-[10px] font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 rounded mono">CAD Beveled PBR</span>
+            </div>
+            <p id="hud-model-desc" class="text-xs text-slate-300 mt-0.5">120mm Cooling Fan with Swept Airfoil Impeller, Corner Ribs & Keyed 2-Pin Lead</p>
+            <div class="flex items-center gap-4 mt-2 pt-2 border-t border-slate-800/80 text-[11px] mono text-slate-300">
+              <div>Meshes: <span id="hud-mesh-count" class="text-sky-400 font-semibold">0</span></div>
+              <div>Triangles: <span id="hud-tri-count" class="text-sky-400 font-semibold">0</span></div>
+              <div>Vertices: <span id="hud-vert-count" class="text-sky-400 font-semibold">0</span></div>
+            </div>
+          </div>
+
+          <!-- Selected Sub-Mesh Pill -->
+          <div id="hud-selected-pill" class="hidden bg-sky-950/85 backdrop-blur-md border border-sky-500/40 rounded-lg px-3 py-1.5 text-xs text-sky-200 mono shadow-lg">
+            Selected Node: <span id="hud-selected-name" class="font-semibold text-white">None</span>
+          </div>
         </div>
 
         <!-- Bottom Floating Exploded-View & Lighting Bar -->
-        <div class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-xl bg-[#0f131c]/90 backdrop-blur-md border border-slate-800/90 rounded-2xl px-4 py-3 shadow-2xl flex flex-col sm:flex-row items-center gap-4">
+        <div id="scene-sliders" class="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-xl bg-[#0f131c]/90 backdrop-blur-md border border-slate-800/90 rounded-2xl px-4 py-3 shadow-2xl flex flex-col sm:flex-row items-center gap-4">
           <div class="flex-1 w-full">
             <div class="flex justify-between text-xs mb-1">
               <span class="font-medium text-slate-300 flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                 </svg>
-                Classroom Exploded Disassembly View
+                Exploded view
               </span>
               <span id="explode-val" class="mono text-sky-400 font-semibold">0%</span>
             </div>
-            <input id="slider-explode" type="range" min="0" max="100" value="0" class="w-full" />
+            <input id="slider-explode" aria-label="Exploded view" type="range" min="0" max="100" value="0" class="w-full" />
           </div>
 
           <div class="w-full sm:w-40 border-t sm:border-t-0 sm:border-l border-slate-800 pt-2 sm:pt-0 sm:pl-4">
             <div class="flex justify-between text-xs mb-1">
-              <span class="font-medium text-slate-300">Studio Exposure</span>
+              <span class="font-medium text-slate-300">Exposure</span>
               <span id="exposure-val" class="mono text-slate-400">1.00</span>
             </div>
-            <input id="slider-exposure" type="range" min="40" max="200" value="100" class="w-full" />
+            <input id="slider-exposure" aria-label="Exposure" type="range" min="40" max="200" value="100" class="w-full" />
           </div>
         </div>
+        <div class="viewport-hint">Drag to orbit <span>·</span> Scroll to zoom <span>·</span> Click a part to edit</div>
       </div>
     </main>
 
-    <!-- Right Sidebar: Sub-Mesh Hierarchy & Live PBR Material Editor -->
-    <aside class="w-full lg:w-80 bg-[#0f131c] border-t lg:border-t-0 lg:border-l border-slate-800/80 flex flex-col shrink-0 z-10 max-h-64 lg:max-h-full overflow-y-auto">
+    <!-- Right Sidebar: Sub-Mesh Hierarchy & Material -->
+    <aside id="inspector-panel" aria-label="Model inspector" class="w-full lg:w-80 bg-[#0f131c] border-t lg:border-t-0 lg:border-l border-slate-800/80 flex flex-col shrink-0 z-10 max-h-64 lg:max-h-full overflow-y-auto">
       
+      <div class="inspector-heading"><span>Inspector</span><button id="btn-close-inspector" aria-label="Close inspector">✕</button></div>
+          <!-- Active Classroom Callout Lesson Card -->
+          <div id="hud-lesson-card" class="hidden bg-indigo-950/90 backdrop-blur-md border border-indigo-500/40 rounded-xl px-3.5 py-2.5 text-xs text-indigo-100 shadow-xl pointer-events-auto">
+            <div class="flex items-center justify-between gap-2 mb-1">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-300 mono">Classroom Training Note</span>
+              <span id="lesson-part-tag" class="px-1.5 py-0.5 rounded bg-indigo-500/30 text-[10px] mono text-white">Click any numbered pin</span>
+            </div>
+            <p id="lesson-part-desc" class="text-[11px] text-slate-200 leading-relaxed">
+              Use the numbered 3D pins or the Exploded View slider below to inspect internal hardware anatomy, pinouts, and mechanical assembly points.
+            </p>
+          </div>
+
       <!-- Sub-Mesh Hierarchy Section -->
       <div class="p-3 border-b border-slate-800/80 flex items-center justify-between">
         <div>
-          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">GLB Node Hierarchy</h2>
-          <p class="text-[11px] text-slate-500">Click any sub-mesh to inspect or edit PBR</p>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Model parts</h2>
+          <p class="text-[11px] text-slate-500">Select a part to edit its material</p>
         </div>
         <button id="btn-show-all-nodes" class="text-[11px] text-sky-400 hover:text-sky-300 font-medium">Show All</button>
       </div>
@@ -282,7 +395,7 @@
       <!-- Live PBR Material Editor -->
       <div class="p-3.5 flex-1 flex flex-col gap-3">
         <div class="flex items-center justify-between">
-          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Live PBR Material Editor</h2>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Material</h2>
           <span id="mat-editor-name" class="text-[11px] mono text-sky-400 truncate max-w-[140px]">Select a node</span>
         </div>
 
@@ -290,12 +403,12 @@
           <!-- Base Color -->
           <div>
             <div class="flex justify-between text-xs mb-1">
-              <label class="text-slate-300">Base Color (Albedo)</label>
+              <label class="text-slate-300">Base color</label>
               <span id="mat-color-hex" class="mono text-slate-400">#1a1a1a</span>
             </div>
             <div class="flex items-center gap-2">
-              <input id="input-mat-color" type="color" value="#1a1a1a" class="w-8 h-7 rounded bg-slate-900 border border-slate-700 cursor-pointer" />
-              <span class="text-[11px] text-slate-400">Updates GLB material slot live</span>
+              <input id="input-mat-color" aria-label="Base color" type="color" value="#1a1a1a" class="w-8 h-7 rounded bg-slate-900 border border-slate-700 cursor-pointer" />
+              <span class="text-[11px] text-slate-400">Applied to the selected part</span>
             </div>
           </div>
 
@@ -305,7 +418,7 @@
               <label class="text-slate-300">Metalness</label>
               <span id="val-mat-metalness" class="mono text-sky-400">0.10</span>
             </div>
-            <input id="slider-mat-metalness" type="range" min="0" max="100" value="10" class="w-full" />
+            <input id="slider-mat-metalness" aria-label="Metalness" type="range" min="0" max="100" value="10" class="w-full" />
           </div>
 
           <!-- Roughness -->
@@ -314,29 +427,37 @@
               <label class="text-slate-300">Roughness</label>
               <span id="val-mat-roughness" class="mono text-sky-400">0.55</span>
             </div>
-            <input id="slider-mat-roughness" type="range" min="0" max="100" value="55" class="w-full" />
+            <input id="slider-mat-roughness" aria-label="Roughness" type="range" min="0" max="100" value="55" class="w-full" />
           </div>
 
           <!-- Bump / Micro-Surface Intensity -->
           <div>
             <div class="flex justify-between text-xs mb-1">
-              <label class="text-slate-300">Surface Relief / Normal</label>
+              <label class="text-slate-300">Surface detail</label>
               <span id="val-mat-bump" class="mono text-sky-400">1.00</span>
             </div>
-            <input id="slider-mat-bump" type="range" min="0" max="200" value="100" class="w-full" />
+            <input id="slider-mat-bump" aria-label="Surface detail" type="range" min="0" max="200" value="100" class="w-full" />
           </div>
         </div>
 
         <!-- Export Options Card -->
         <div class="mt-auto pt-3 border-t border-slate-800/80 space-y-2">
           <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-3">
-            <div class="text-xs font-semibold text-white mb-1">Three.js Loader Compatibility</div>
+            <div class="text-xs font-semibold text-white mb-1">Ready for your next project</div>
             <p class="text-[11px] text-slate-400 leading-relaxed">
-              Exported <code class="text-sky-400 mono">.glb</code> files embed all sub-mesh names, pivot origins, and procedural PBR textures (color, normal, roughness/metal, clearcoat) for direct <code class="text-emerald-400 mono">GLTFLoader</code> use.
+              Export your model with materials and named parts included. Use GLB for sharing, or GLTF for further editing.
             </p>
             <button id="btn-export-gltf-json" class="mt-2.5 w-full py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition">
-              Export Editable .GLTF (JSON)
+              Export GLTF source
             </button>
+            <button id="btn-source-secondary" class="secondary-source">View editable code</button>
+      <button id="btn-export-all-glb" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-semibold text-white shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        </svg>
+        <span class="hidden sm:inline">Export all models</span>
+        <span class="sm:hidden">All 9</span>
+      </button>
           </div>
         </div>
       </div>
@@ -4484,7 +4605,7 @@
     let wireframeEnabled = false;
     let animateEnabled = true;
     let turntableEnabled = false;
-    let calloutsEnabled = true;
+    let calloutsEnabled = false;
     let lightBackdropEnabled = false;
     let explodeFactor = 0;
     let activeCalloutEls = [];
@@ -4614,7 +4735,7 @@
 
       gridHelper = new THREE.GridHelper(10, 40, 0x334155, 0x1e293b);
       gridHelper.material.transparent = true;
-      gridHelper.material.opacity = 0.55;
+      gridHelper.material.opacity = 0.25;
       scene.add(gridHelper);
       applyStudioBackdrop();
 
@@ -4637,12 +4758,17 @@
       });
 
       window.addEventListener('resize', onWindowResize);
+      new ResizeObserver(onWindowResize).observe(container);
+      onWindowResize();
     }
 
     function onWindowResize() {
       const container = document.getElementById('viewport-container');
       if (!container || !renderer) return;
+      if (!container.clientWidth || !container.clientHeight) return;
       camera.aspect = container.clientWidth / container.clientHeight;
+      // Preserve comfortable framing in both wide and narrow workspaces.
+      camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(50) / 2) / Math.min(1, camera.aspect)));
       camera.updateProjectionMatrix();
       renderer.setSize(container.clientWidth, container.clientHeight);
     }
@@ -4802,7 +4928,7 @@
     }
 
     function updateHUDAndHierarchy(filename, subtitle) {
-      document.getElementById('hud-model-title').textContent = filename;
+      document.getElementById('hud-model-title').textContent = filename.replace(/\.glb$/i, '').replace(/_/g, ' ');
       document.getElementById('export-btn-filename').textContent = filename;
       document.getElementById('hud-model-desc').textContent = subtitle;
 
@@ -4887,6 +5013,8 @@
           parentGroup = parentGroup.parent;
         }
         selectSubMesh(hitMesh, parentGroup.name || hitMesh.name);
+        document.getElementById('studio-workspace').classList.add('inspector-open');
+        document.getElementById('btn-inspector').setAttribute('aria-expanded', 'true');
       }
     }
 
@@ -5008,7 +5136,11 @@
       const listEl = document.getElementById('asset-list');
       listEl.innerHTML = '';
 
+      const query = document.getElementById('model-search').value.trim().toLowerCase();
+      let matches = 0;
       HARDWARE_REGISTRY.forEach((item, idx) => {
+        if (query && !`${item.title} ${item.subtitle} ${item.filename}`.toLowerCase().includes(query)) return;
+        matches++;
         const isActive = !isGridView && idx === activeAssetIndex;
         if (item.library) {
           if (!HARDWARE_REGISTRY[idx - 1].library) listEl.appendChild(libraryHeading());
@@ -5021,9 +5153,11 @@
             ? 'bg-sky-500/15 border-sky-500/50 text-white shadow-md shadow-sky-950/50'
             : 'bg-slate-900/60 hover:bg-slate-800/80 border-slate-800/80 text-slate-300'
         }`;
+        btn.setAttribute('aria-pressed', String(isActive));
         btn.innerHTML = `
-          <div class="truncate pr-2">
-            <div class="text-xs font-semibold truncate">${item.title}</div>
+          <div class="asset-icon" aria-hidden="true">${['◉','▥','▤','▧','▦','▰','▣','▱','▭'][idx]}</div>
+          <div class="truncate pr-2 asset-copy">
+            <div class="text-xs font-semibold truncate">${item.title.replace(/^\d+\.\s*/, '')}</div>
             <div class="text-[11px] text-slate-400 truncate mt-0.5">${item.subtitle}</div>
             <div class="text-[10px] mono text-sky-400 mt-1">${item.filename}</div>
           </div>
@@ -5048,6 +5182,12 @@
         listEl.appendChild(btn);
       });
 
+      if (!matches) {
+        const empty = document.createElement('p');
+        empty.className = 'search-empty';
+        empty.textContent = 'No models found. Try another name.';
+        listEl.appendChild(empty);
+      }
       const addCard = document.createElement('button');
       addCard.className = 'w-56 lg:w-full shrink-0 px-3 py-2.5 rounded-xl border border-dashed border-fuchsia-500/40 hover:border-fuchsia-400 hover:bg-fuchsia-500/10 text-left text-xs text-fuchsia-200 transition';
       addCard.innerHTML = '<div class="font-semibold">+ New model from a photo</div><div class="text-[11px] text-slate-400 mt-0.5">AI image-to-3D, or import a .glb</div>';
@@ -5102,6 +5242,16 @@
     }
 
     function bindUIEvents() {
+      document.getElementById('model-search').addEventListener('input', renderAssetSidebar);
+      document.getElementById('btn-source-secondary').addEventListener('click', () => document.getElementById('btn-source-modal').click());
+      const setInspector = (open) => {
+        document.getElementById('studio-workspace').classList.toggle('inspector-open', open);
+        document.getElementById('btn-inspector').setAttribute('aria-expanded', String(open));
+      };
+      document.getElementById('btn-inspector').addEventListener('click', () => setInspector(!document.getElementById('studio-workspace').classList.contains('inspector-open')));
+      document.getElementById('btn-close-inspector').addEventListener('click', () => setInspector(false));
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') setInspector(false); });
+
       // Export Current GLB
       document.getElementById('btn-export-current-glb').addEventListener('click', () => {
         if (!currentModelGroup) return;
@@ -5707,11 +5857,12 @@
             this.setNote(
               this.providers.some((p) => p.configured)
                 ? ''
-                : 'No AI generator is configured yet. Add a key to the <code class="mono text-white">.env</code> file next to ' +
+                : 'Connect an AI generator to turn your photos into 3D models. You can also import an existing GLB.' +
+                    '<details class="mt-2"><summary class="cursor-pointer">How to connect a generator</summary><p class="mt-2">Add a key to the <code class="mono text-white">.env</code> file next to ' +
                     '<code class="mono text-white">studio-server.mjs</code> and restart it, e.g. ' +
                     '<code class="mono text-white">ANTHROPIC_API_KEY=…</code> for the AI Builder, or ' +
                     '<code class="mono text-white">MESHY_API_KEY=…</code> / <code class="mono text-white">STABILITY_API_KEY=…</code>. ' +
-                    'Meshy\'s free test key <code class="mono text-white">msy_dummy_api_key_for_test_mode_12345678</code> returns a sample model so you can try the workflow.'
+                    'Meshy\'s free test key <code class="mono text-white">msy_dummy_api_key_for_test_mode_12345678</code> returns a sample model so you can try the workflow.</p></details>'
             );
           } catch (err) {
             this.serverReady = false;
